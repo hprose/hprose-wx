@@ -1,6 +1,6 @@
 # Hprose 2.0 微信小程序专用版
 
-*## 简介
+## 简介
  
  *Hprose* 是高性能远程对象服务引擎（High Performance Remote Object Service Engine）的缩写。
  
