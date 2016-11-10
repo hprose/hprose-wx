@@ -1,4 +1,4 @@
-# Hprose for WeChat App
+# Hprose 2.0 for WeChat App
 
 *Hprose* is a High Performance Remote Object Service Engine.
 
@@ -26,4 +26,4 @@ It is a modern, lightweight, cross-language, cross-platform, object-oriented, hi
 
 Through *Hprose*, You can conveniently and efficiently intercommunicate between those programming languages.
 
-This project is the implementation of Hprose for WeChat App.
+This project is the implementation of Hprose 2.0 for WeChat App.
