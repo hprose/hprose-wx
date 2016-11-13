@@ -13,7 +13,7 @@
  *                                                        *
  * setImmediate for WeChat App.                           *
  *                                                        *
- * LastModified: Nov 10, 2016                             *
+ * LastModified: Nov 13, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -46,30 +46,13 @@
         return nextId++;
     }
 
-    if (MessageChannel) {
-        hprose.setImmediate = (function() {
-            var channel = new MessageChannel();
-
-            channel.port1.onmessage = function(event) {
-                run(Number(event.data));
-            };
-
-            return function() {
-                var handleId = create(arguments);
-                channel.port2.postMessage(handleId);
-                return handleId;
-            };
-        })();
-    }
-    else {
-        hprose.setImmediate = (function() {
-            return function() {
-                var handleId = create(arguments);
-                setTimeout( wrap( run, handleId ), 0 );
-                return handleId;
-            };
-        })();
-    }
+    hprose.setImmediate = (function() {
+        return function() {
+            var handleId = create(arguments);
+            setTimeout( wrap( run, handleId ), 0 );
+            return handleId;
+        };
+    })();
 
     hprose.clearImmediate = function(handleId) {
         delete tasks[handleId];
