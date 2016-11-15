@@ -36,6 +36,14 @@ gulp.task('concat', ['clear'], function() {
 });
 
 gulp.task('uglify', ['concat'], function() {
+    gulp.src(['utils/co.js'])
+        .pipe(concat('co.js'))
+        .pipe(uglify())
+        .pipe(gulp.dest('dist'));
+    gulp.src(['utils/regenerator-runtime.js'])
+        .pipe(concat('regenerator-runtime.js'))
+        .pipe(uglify())
+        .pipe(gulp.dest('dist'));
     return gulp.src(['dist/hprose.src.js'])
         .pipe(concat('hprose.js'))
         .pipe(uglify())
