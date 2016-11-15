@@ -15,6 +15,7 @@ gulp.task('concat', ['clear'], function() {
                      'src/Helper.js',
                      'src/TimeoutError.js',
                      'src/setImmediate.js',
+                     'src/Map.js',
                      'src/Future.js',
                      'src/StringIO.js',
                      'src/Tags.js',

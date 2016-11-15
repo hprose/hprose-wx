@@ -13,7 +13,7 @@
  *                                                        *
  * hprose Reader for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 10, 2016                             *
+ * LastModified: Nov 16, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -23,6 +23,7 @@
     var StringIO = hprose.StringIO;
     var Tags = hprose.Tags;
     var ClassManager = hprose.ClassManager;
+    var Map = hprose.Map;
 
     function unexpectedTag(tag, expectTags) {
         if (tag && expectTags) {

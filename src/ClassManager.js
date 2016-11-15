@@ -13,13 +13,14 @@
  *                                                        *
  * hprose ClassManager for WeChat App.                    *
  *                                                        *
- * LastModified: Nov 10, 2016                             *
+ * LastModified: Nov 16, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
 (function (hprose) {
 
+    var WeakMap = hprose.WeakMap;
     var classCache = Object.create(null);
     var aliasCache = new WeakMap();
 

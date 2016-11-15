@@ -267,6 +267,225 @@ TimeoutError.prototype.constructor = TimeoutError;
 
 /**********************************************************\
  *                                                        *
+ * Map.js                                                 *
+ *                                                        *
+ * hprose Map for WeChat App.                             *
+ *                                                        *
+ * LastModified: Nov 16, 2016                             *
+ * Author: Ma Bingyao <andot@hprose.com>                  *
+ *                                                        *
+\**********************************************************/
+
+var namespaces = Object.create(null);
+var count = 0;
+
+function reDefineValueOf(obj) {
+    var privates = Object.create(null);
+    var baseValueOf = obj.valueOf;
+    Object.defineProperty(obj, 'valueOf', {
+        value: function (namespace, n) {
+                if ((this === obj) &&
+                    (n in namespaces) &&
+                    (namespaces[n] === namespace)) {
+                    if (!(n in privates)) {
+                        privates[n] = Object.create(null);
+                    }
+                    return privates[n];
+                }
+                else {
+                    return baseValueOf.apply(this, arguments);
+                }
+            },
+        writable: true,
+        configurable: true,
+        enumerable: false
+    });
+}
+
+function WeakMap() {
+    var namespace = Object.create(null);
+    var n = count++;
+    namespaces[n] = namespace;
+    var map = function (key) {
+        if (key !== Object(key)) {
+            throw new Error('value is not a non-null object');
+        }
+        var privates = key.valueOf(namespace, n);
+        if (privates !== key.valueOf()) {
+            return privates;
+        }
+        reDefineValueOf(key);
+        return key.valueOf(namespace, n);
+    };
+    var m = Object.create(WeakMap.prototype, {
+        get: {
+            value: function (key) {
+                return map(key).value;
+            }
+        },
+        set: {
+            value: function (key, value) {
+                map(key).value = value;
+            }
+        },
+        has: {
+            value: function (key) {
+                return 'value' in map(key);
+            }
+        },
+        'delete': {
+            value: function (key) {
+                return delete map(key).value;
+            }
+        },
+        clear: {
+            value: function () {
+                delete namespaces[n];
+                n = count++;
+                namespaces[n] = namespace;
+            }
+        }
+    });
+    if (arguments.length > 0 && Array.isArray(arguments[0])) {
+        var iterable = arguments[0];
+        for (var i = 0, len = iterable.length; i < len; i++) {
+            m.set(iterable[i][0], iterable[i][1]);
+        }
+    }
+    return m;
+}
+
+function objectMap() {
+    var namespace = Object.create(null);
+    var n = count++;
+    var nullMap = Object.create(null);
+    namespaces[n] = namespace;
+    var map = function (key) {
+        if (key === null) { return nullMap; }
+        var privates = key.valueOf(namespace, n);
+        if (privates !== key.valueOf()) { return privates; }
+        reDefineValueOf(key);
+        return key.valueOf(namespace, n);
+    };
+    return {
+        get: function (key) { return map(key).value; },
+        set: function (key, value) { map(key).value = value; },
+        has: function (key) { return 'value' in map(key); },
+        'delete': function (key) { return delete map(key).value; },
+        clear: function () {
+            delete namespaces[n];
+            n = count++;
+            namespaces[n] = namespace;
+        }
+    };
+}
+
+function noKeyMap() {
+    var map = Object.create(null);
+    return {
+        get: function () { return map.value; },
+        set: function (_, value) { map.value = value; },
+        has: function () { return 'value' in map; },
+        'delete': function () { return delete map.value; },
+        clear: function () { map = Object.create(null); }
+    };
+}
+
+function scalarMap() {
+    var map = Object.create(null);
+    return {
+        get: function (key) { return map[key]; },
+        set: function (key, value) { map[key] = value; },
+        has: function (key) { return key in map; },
+        'delete': function (key) { return delete map[key]; },
+        clear: function () { map = Object.create(null); }
+    };
+}
+
+function Map() {
+    var map = {
+        'number': scalarMap(),
+        'string': scalarMap(),
+        'boolean': scalarMap(),
+        'object': objectMap(),
+        'function': objectMap(),
+        'unknown': objectMap(),
+        'undefined': noKeyMap(),
+        'null': noKeyMap()
+    };
+    var size = 0;
+    var keys = [];
+    var m = Object.create(Map.prototype, {
+        size: {
+            get : function () { return size; }
+        },
+        get: {
+            value: function (key) {
+                return map[typeof(key)].get(key);
+            }
+        },
+        set: {
+            value: function (key, value) {
+                if (!this.has(key)) {
+                    keys.push(key);
+                    size++;
+                }
+                map[typeof(key)].set(key, value);
+            }
+        },
+        has: {
+            value: function (key) {
+                return map[typeof(key)].has(key);
+            }
+        },
+        'delete': {
+            value: function (key) {
+                if (this.has(key)) {
+                    size--;
+                    keys.splice(keys.indexOf(key), 1);
+                    return map[typeof(key)]['delete'](key);
+                }
+                return false;
+            }
+        },
+        clear: {
+            value: function () {
+                keys.length = 0;
+                for (var key in map) { map[key].clear(); }
+                size = 0;
+            }
+        },
+        forEach: {
+            value: function (callback, thisArg) {
+                for (var i = 0, n = keys.length; i < n; i++) {
+                    callback.call(thisArg, this.get(keys[i]), keys[i], this);
+                }
+            }
+        }
+    });
+    if (arguments.length > 0 && Array.isArray(arguments[0])) {
+        var iterable = arguments[0];
+        for (var i = 0, len = iterable.length; i < len; i++) {
+            m.set(iterable[i][0], iterable[i][1]);
+        }
+    }
+    return m;
+}
+
+hprose.WeakMap = WeakMap;
+hprose.Map = Map;
+
+/**********************************************************\
+|                                                          |
+|                          hprose                          |
+|                                                          |
+| Official WebSite: http://www.hprose.com/                 |
+|                   http://www.hprose.org/                 |
+|                                                          |
+\**********************************************************/
+
+/**********************************************************\
+ *                                                        *
  * Future.js                                              *
  *                                                        *
  * hprose Future for WeChat App.                          *
@@ -1660,13 +1879,14 @@ hprose.Tags = {
  *                                                        *
  * hprose ClassManager for WeChat App.                    *
  *                                                        *
- * LastModified: Nov 10, 2016                             *
+ * LastModified: Nov 16, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
 (function (hprose) {
 
+    var WeakMap = hprose.WeakMap;
     var classCache = Object.create(null);
     var aliasCache = new WeakMap();
 
@@ -1710,7 +1930,7 @@ hprose.Tags = {
  *                                                        *
  * hprose Writer for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 10, 2016                             *
+ * LastModified: Nov 16, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -1721,6 +1941,7 @@ hprose.Tags = {
     var Tags = hprose.Tags;
     var ClassManager = hprose.ClassManager;
     var utf8Encode = StringIO.utf8Encode;
+    var Map = hprose.Map;
 
     function getClassName(obj) {
         var cls = obj.constructor;
@@ -2209,7 +2430,7 @@ hprose.Tags = {
  *                                                        *
  * hprose Reader for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 10, 2016                             *
+ * LastModified: Nov 16, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -2219,6 +2440,7 @@ hprose.Tags = {
     var StringIO = hprose.StringIO;
     var Tags = hprose.Tags;
     var ClassManager = hprose.ClassManager;
+    var Map = hprose.Map;
 
     function unexpectedTag(tag, expectTags) {
         if (tag && expectTags) {
@@ -2990,7 +3212,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
  *                                                        *
  * hprose client for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 14, 2016                             *
+ * LastModified: Nov 16, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -3006,6 +3228,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
     var Future = hprose.Future;
     var parseuri = hprose.parseuri;
     var isObjectEmpty = hprose.isObjectEmpty;
+    var Map = hprose.Map;
 
     var GETFUNCTIONS = Tags.TagEnd;
 
@@ -4202,7 +4425,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
                 header: header,
                 timeout: env.timeout,
                 complete: function(ret) {
-                    if (ret.statusCode === 200) {
+                    if (parseInt(ret.statusCode, 10) === 200) {
                         future.resolve(ret.data);
                     }
                     else {

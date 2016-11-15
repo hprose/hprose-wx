@@ -12,7 +12,7 @@
  *                                                        *
  * hprose client for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 14, 2016                             *
+ * LastModified: Nov 16, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -28,6 +28,7 @@
     var Future = hprose.Future;
     var parseuri = hprose.parseuri;
     var isObjectEmpty = hprose.isObjectEmpty;
+    var Map = hprose.Map;
 
     var GETFUNCTIONS = Tags.TagEnd;
 

@@ -13,7 +13,7 @@
  *                                                        *
  * hprose Writer for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 10, 2016                             *
+ * LastModified: Nov 16, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -24,6 +24,7 @@
     var Tags = hprose.Tags;
     var ClassManager = hprose.ClassManager;
     var utf8Encode = StringIO.utf8Encode;
+    var Map = hprose.Map;
 
     function getClassName(obj) {
         var cls = obj.constructor;
