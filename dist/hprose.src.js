@@ -307,7 +307,7 @@ TimeoutError.prototype.constructor = TimeoutError;
     }
 
     function isPromise(obj) {
-        return isFuture(obj) || ((obj instanceof Promise) && (typeof (obj.then === 'function')));
+        return 'function' === typeof obj.then;
     }
 
     function toPromise(obj) {
@@ -929,6 +929,23 @@ TimeoutError.prototype.constructor = TimeoutError;
             reject: { value: self.reject }
         });
     };
+
+    function Promise(executor) {
+        Future.call(this);
+        executor(this.resolve, this.reject);
+    }
+
+    Promise.prototype = Object.create(Future.prototype);
+    Promise.prototype.constructor = Future;
+
+    Object.defineProperties(Promise, {
+        all: { value: all },
+        race: { value: race },
+        resolve: { value: value },
+        reject: { value: error }
+    });
+
+    hprose.Promise = Promise;
 
 })(hprose);
 
