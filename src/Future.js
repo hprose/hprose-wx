@@ -13,12 +13,13 @@
  *                                                        *
  * hprose Future for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 10, 2016                             *
+ * LastModified: Nov 16, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
 (function (hprose, undefined) {
+    'use strict';
     var PENDING = 0;
     var FULFILLED = 1;
     var REJECTED = 2;
@@ -672,21 +673,26 @@
         });
     };
 
-    function Promise(executor) {
+    if (typeof Promise === 'function') {
+        hprose.Promise = Promise;
+        return;
+    }
+
+    function MyPromise(executor) {
         Future.call(this);
         executor(this.resolve, this.reject);
     }
 
-    Promise.prototype = Object.create(Future.prototype);
-    Promise.prototype.constructor = Future;
+    MyPromise.prototype = Object.create(Future.prototype);
+    MyPromise.prototype.constructor = Future;
 
-    Object.defineProperties(Promise, {
+    Object.defineProperties(MyPromise, {
         all: { value: all },
         race: { value: race },
         resolve: { value: value },
         reject: { value: error }
     });
 
-    hprose.Promise = Promise;
+    hprose.Promise = MyPromise;
 
 })(hprose);

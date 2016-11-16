@@ -18,7 +18,7 @@
 \**********************************************************/
 
 (function (hprose, undefined) {
-
+    'use strict';
     var setImmediate = hprose.setImmediate;
     var Tags = hprose.Tags;
     var ResultMode = hprose.ResultMode;

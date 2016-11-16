@@ -13,13 +13,13 @@
  *                                                        *
  * jsonrpc client filter for WeChat App.                  *
  *                                                        *
- * LastModified: Nov 11, 2016                             *
+ * LastModified: Nov 16, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
 (function (hprose) {
-
+    'use strict';
     var Tags = hprose.Tags;
     var StringIO = hprose.StringIO;
     var Writer = hprose.Writer;

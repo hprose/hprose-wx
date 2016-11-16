@@ -19,7 +19,7 @@
 \**********************************************************/
 
 (function (hprose, undefined) {
-
+    'use strict';
     var StringIO = hprose.StringIO;
     var Tags = hprose.Tags;
     var ClassManager = hprose.ClassManager;

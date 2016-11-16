@@ -19,7 +19,7 @@
 \**********************************************************/
 
 (function (hprose) {
-
+    'use strict';
     var WeakMap = hprose.WeakMap;
     var classCache = Object.create(null);
     var aliasCache = new WeakMap();

@@ -13,30 +13,32 @@
  *                                                        *
  * hprose helper for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 10, 2016                             *
+ * LastModified: Nov 16, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
-Function.prototype.bind = function(oThis) {
-    if (typeof this !== 'function') {
-        throw new TypeError('Function.prototype.bind - what is trying to be bound is not callable');
-    }
-    var aArgs   = Array.prototype.slice.call(arguments, 1),
-        toBind = this,
-        NOP    = function() {},
-        bound  = function() {
-            return toBind.apply(this instanceof NOP ? this : oThis,
-                    aArgs.concat(Array.prototype.slice.call(arguments)));
-        };
-    if (this.prototype) {
-        NOP.prototype = this.prototype;
-    }
-    bound.prototype = new NOP();
-    return bound;
-};
-
 (function(hprose) {
+    'use strict';
+    if (!Function.prototype.bind) {
+        Function.prototype.bind = function(oThis) {
+            if (typeof this !== 'function') {
+                throw new TypeError('Function.prototype.bind - what is trying to be bound is not callable');
+            }
+            var aArgs   = Array.prototype.slice.call(arguments, 1),
+                toBind = this,
+                NOP    = function() {},
+                bound  = function() {
+                    return toBind.apply(this instanceof NOP ? this : oThis,
+                            aArgs.concat(Array.prototype.slice.call(arguments)));
+                };
+            if (this.prototype) {
+                NOP.prototype = this.prototype;
+            }
+            bound.prototype = new NOP();
+            return bound;
+        };
+    }
 
     function generic(method) {
         if (typeof method !== "function") {

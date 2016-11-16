@@ -13,12 +13,13 @@
  *                                                        *
  * hprose StringIO for WeChat App.                        *
  *                                                        *
- * LastModified: Nov 10, 2016                             *
+ * LastModified: Nov 16, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
 (function (hprose, undefined) {
+    'use strict';
     // i is a int32 number
     function int32BE(i) {
         return String.fromCharCode(

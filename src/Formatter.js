@@ -13,13 +13,13 @@
  *                                                        *
  * hprose Formatter for WeChat App.                       *
  *                                                        *
- * LastModified: Nov 10, 2016                             *
+ * LastModified: Nov 16, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
 (function (hprose) {
-
+    'use strict';
     var StringIO = hprose.StringIO;
     var Writer = hprose.Writer;
     var Reader = hprose.Reader;
