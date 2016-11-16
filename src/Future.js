@@ -53,10 +53,6 @@
         return 'function' === typeof obj.then;
     }
 
-    function toPromise(obj) {
-        return (isFuture(obj) ? obj : value(obj));
-    }
-
     function delayed(duration, value) {
         var computation = (typeof value === 'function') ?
                           value :
@@ -187,9 +183,10 @@
     }
 
     function attempt(handler/*, arg1, arg2, ... */) {
+        var thisArg = (function() { return this; })();
         var args = Array.slice(arguments, 1);
         return all(args).then(function(args) {
-            return handler.apply(undefined, args);
+            return handler.apply(thisArg, args);
         });
     }
 
@@ -200,39 +197,159 @@
         });
     }
 
+    function isGenerator(obj) {
+        return 'function' == typeof obj.next && 'function' == typeof obj.throw;
+    }
+
+    function isGeneratorFunction(obj) {
+        if (!obj) {
+            return false;
+        }
+        var constructor = obj.constructor;
+        if (!constructor) {
+            return false;
+        }
+        if ('GeneratorFunction' === constructor.name ||
+            'GeneratorFunction' === constructor.displayName) {
+            return true;
+        }
+        return isGenerator(constructor.prototype);
+    }
+
+    function thunkToPromise(fn) {
+        var thisArg = (function() { return this; })();
+        var future = new Future();
+        fn.call(thisArg, function(err, res) {
+            if (arguments.length < 2) {
+                if (err instanceof Error) {
+                    return future.reject(err);
+                }
+                return future.resolve(err);
+            }
+            if (err) return future.reject(err);
+            if (arguments.length > 2) {
+                res = Array.slice(arguments, 1);
+            }
+            future.resolve(res);
+        });
+        return future;
+    }
+
+    function thunkify(fn) {
+        return function() {
+            var args = Array.slice(arguments, 0);
+            var thisArg = this;
+            return function(done) {
+                var called;
+                args.push(function() {
+                    if (called) return;
+                    called = true;
+                    done.apply(null, arguments);
+                });
+                try {
+                    fn.apply(thisArg, args);
+                }
+                catch (err) {
+                    done(err, undefined);
+                }
+            };
+        };
+    }
+
+    function toPromise(obj) {
+        if (!obj) return value(obj);
+        if (isPromise(obj)) return obj;
+        if (isGeneratorFunction(obj) || isGenerator(obj)) return co(obj);
+        if ('function' == typeof obj) return thunkToPromise(obj);
+        return value(obj);
+    }
+
+    function co(gen) {
+        var thisArg = (function() { return this; })();
+        if (typeof gen === 'function') {
+            var args = Array.slice(arguments, 1);
+            gen = gen.apply(thisArg, args);
+        }
+        var future = new Future();
+
+        function onFulfilled(res) {
+            try {
+                next(gen.next(res));
+            }
+            catch (e) {
+                future.reject(e);
+            }
+        }
+
+        function onRejected(err) {
+            try {
+                next(gen.throw(err));
+            }
+            catch (e) {
+                return future.reject(e);
+            }
+        }
+
+        function next(ret) {
+            if (ret.done) {
+                future.resolve(ret.value);
+            }
+            else {
+                toPromise(ret.value).then(onFulfilled, onRejected);
+            }
+        }
+
+        if (!gen || typeof gen.next !== 'function') {
+            return future.resolve(gen);
+        }
+        onFulfilled();
+
+        return future;
+    }
+
     function wrap(handler, thisArg) {
         return function() {
+            thisArg = thisArg || this;
             return all(arguments).then(function(args) {
-                return handler.apply(thisArg, args);
+                var result = handler.apply(thisArg, args);
+                if (isGeneratorFunction(result)) {
+                    return co.call(thisArg, result);
+                }
+                return result;
             });
         };
     }
 
     function forEach(array, callback, thisArg) {
+        thisArg = thisArg || (function() { return this; })();
         return all(array).then(function(array) {
             return array.forEach(callback, thisArg);
         });
     }
 
     function every(array, callback, thisArg) {
+        thisArg = thisArg || (function() { return this; })();
         return all(array).then(function(array) {
             return array.every(callback, thisArg);
         });
     }
 
     function some(array, callback, thisArg) {
+        thisArg = thisArg || (function() { return this; })();
         return all(array).then(function(array) {
             return array.some(callback, thisArg);
         });
     }
 
     function filter(array, callback, thisArg) {
+        thisArg = thisArg || (function() { return this; })();
         return all(array).then(function(array) {
             return array.filter(callback, thisArg);
         });
     }
 
     function map(array, callback, thisArg) {
+        thisArg = thisArg || (function() { return this; })();
         return all(array).then(function(array) {
             return array.map(callback, thisArg);
         });
@@ -307,12 +424,14 @@
     }
 
     function find(array, predicate, thisArg) {
+        thisArg = thisArg || (function() { return this; })();
         return all(array).then(function(array) {
             return array.find(predicate, thisArg);
         });
     }
 
     function findIndex(array, predicate, thisArg) {
+        thisArg = thisArg || (function() { return this; })();
         return all(array).then(function(array) {
             return array.findIndex(predicate, thisArg);
         });
@@ -339,6 +458,8 @@
         settle: { value: settle },
         attempt: { value: attempt },
         run: { value: run },
+        thunkify: { value: thunkify },
+        co: { value: co },
         wrap: { value: wrap },
         // for array
         forEach: { value: forEach },
@@ -645,6 +766,10 @@
     });
 
     hprose.Future = Future;
+
+    hprose.thunkify = thunkify;
+    hprose.co = co;
+    hprose.co.wrap = hprose.wrap = wrap;
 
     function Completer() {
         var future = new Future();
