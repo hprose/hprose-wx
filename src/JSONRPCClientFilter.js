@@ -22,7 +22,7 @@
 (function (hprose) {
     'use strict';
     var Tags = hprose.Tags;
-    var StringIO = hprose.StringIO;
+    var BytesIO = hprose.BytesIO;
     var Writer = hprose.Writer;
     var Reader = hprose.Reader;
 
@@ -33,43 +33,44 @@
     }
 
     JSONRPCClientFilter.prototype.inputFilter = function inputFilter(data/*, context*/) {
-        if (data.charAt(0) === '{') {
-            data = '[' + data + ']';
+        var json = BytesIO.toString(data);
+        if (json.charAt(0) === '{') {
+            json = '[' + json + ']';
         }
-        var responses = JSON.parse(data);
-        var stream = new StringIO();
+        var responses = JSON.parse(json);
+        var stream = new BytesIO();
         var writer = new Writer(stream, true);
         for (var i = 0, n = responses.length; i < n; ++i) {
             var response = responses[i];
             if (response.error) {
-                stream.write(Tags.TagError);
+                stream.writeByte(Tags.TagError);
                 writer.writeString(response.error.message);
             }
             else {
-                stream.write(Tags.TagResult);
+                stream.writeByte(Tags.TagResult);
                 writer.serialize(response.result);
             }
         }
-        stream.write(Tags.TagEnd);
-        return stream.take();
+        stream.writeByte(Tags.TagEnd);
+        return stream.bytes;
     };
 
     JSONRPCClientFilter.prototype.outputFilter = function outputFilter(data/*, context*/) {
         var requests = [];
-        var stream = new StringIO(data);
+        var stream = new BytesIO(data);
         var reader = new Reader(stream, false, false);
-        var tag = stream.readChar();
+        var tag = stream.readByte();
         do {
             var request = {};
             if (tag === Tags.TagCall) {
                 request.method = reader.readString();
-                tag = stream.readChar();
+                tag = stream.readByte();
                 if (tag === Tags.TagList) {
                     request.params = reader.readListWithoutTag();
-                    tag = stream.readChar();
+                    tag = stream.readByte();
                 }
                 if (tag === Tags.TagTrue) {
-                    tag = stream.readChar();
+                    tag = stream.readByte();
                 }
             }
             if (this.version === '1.1') {

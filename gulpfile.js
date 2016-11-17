@@ -17,7 +17,7 @@ gulp.task('concat', ['clear'], function() {
                      'src/setImmediate.js',
                      'src/Map.js',
                      'src/Future.js',
-                     'src/StringIO.js',
+                     'src/BytesIO.js',
                      'src/Tags.js',
                      'src/ClassManager.js',
                      'src/Writer.js',
@@ -26,6 +26,7 @@ gulp.task('concat', ['clear'], function() {
                      'src/ResultMode.js',
                      'src/Client.js',
                      'src/HttpClient.js',
+                     'src/WebSocketClient.js',
                      'src/JSONRPCClientFilter.js',
                      'src/Loader.js'])
         .pipe(concat('hprose.src.js'))

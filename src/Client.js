@@ -12,7 +12,7 @@
  *                                                        *
  * hprose client for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -22,14 +22,15 @@
     var setImmediate = hprose.setImmediate;
     var Tags = hprose.Tags;
     var ResultMode = hprose.ResultMode;
-    var StringIO = hprose.StringIO;
+    var BytesIO = hprose.BytesIO;
     var Writer = hprose.Writer;
     var Reader = hprose.Reader;
     var Future = hprose.Future;
     var parseuri = hprose.parseuri;
     var isObjectEmpty = hprose.isObjectEmpty;
 
-    var GETFUNCTIONS = Tags.TagEnd;
+    var GETFUNCTIONS = new Uint8Array(1);
+    GETFUNCTIONS[0] = Tags.TagEnd;
 
     function noop(){}
 
@@ -55,6 +56,8 @@
             _lock                   = false,
             _tasks                  = [],
             _useHarmonyMap          = false,
+            _onerror                = noop,
+            _onfailswitch           = noop,
             _filters                = [],
             _batch                  = false,
             _batches                = [],
@@ -124,9 +127,7 @@
             else {
                 _failround++;
             }
-            if (typeof self.onfailswitch === s_function) {
-                self.onfailswitch(self);
-            }
+            _onfailswitch(self);
         }
 
         function retry(data, context) {
@@ -166,9 +167,9 @@
             var onsuccess = function(data) {
                 var error = null;
                 try {
-                    var stream = new StringIO(data);
+                    var stream = new BytesIO(data);
                     var reader = new Reader(stream, true);
-                    var tag = stream.readChar();
+                    var tag = stream.readByte();
                     switch (tag) {
                         case Tags.TagError:
                             error = new Error(reader.readString());
@@ -179,7 +180,7 @@
                             setFunctions(stub, functions);
                             break;
                         default:
-                            error = new Error('Wrong Response:\r\n' + data);
+                            error = new Error('Wrong Response:\r\n' + BytesIO.toString(data));
                             break;
                     }
                 }
@@ -323,8 +324,8 @@
         }
 
         function encode(name, args, context) {
-            var stream = new StringIO();
-            stream.write(Tags.TagCall);
+            var stream = new BytesIO();
+            stream.writeByte(Tags.TagCall);
             var writer = new Writer(stream, context.simple);
             writer.writeString(name);
             if (args.length > 0 || context.byref) {
@@ -365,8 +366,8 @@
                 if (context.onerror) {
                     context.onerror(name, error);
                 }
-                else if (self.onerror) {
-                    self.onerror(name, error);
+                else {
+                    _onerror(name, error);
                 }
                 reject(error);
             }
@@ -377,9 +378,9 @@
 
         function invokeHandler(name, args, context) {
             var request = encode(name, args, context);
-            request.write(Tags.TagEnd);
+            request.writeByte(Tags.TagEnd);
             return Future.promise(function(resolve, reject) {
-                sendAndReceive(request.toString(), context, function(response) {
+                sendAndReceive(request.bytes, context, function(response) {
                     if (context.oneway) {
                         resolve();
                         return;
@@ -391,12 +392,12 @@
                             result = response;
                         }
                         else if (context.mode === ResultMode.Raw) {
-                            result = response.substring(0, response.length - 1);
+                            result = response.subarray(0, response.byteLength - 1);
                         }
                         else {
-                            var stream = new StringIO(response);
+                            var stream = new BytesIO(response);
                             var reader = new Reader(stream, false, context.useHarmonyMap);
-                            var tag = stream.readChar();
+                            var tag = stream.readByte();
                             if (tag === Tags.TagResult) {
                                 if (context.mode === ResultMode.Serialized) {
                                     result = reader.readRaw();
@@ -404,20 +405,20 @@
                                 else {
                                     result = reader.unserialize();
                                 }
-                                tag = stream.readChar();
+                                tag = stream.readByte();
                                 if (tag === Tags.TagArgument) {
                                     reader.reset();
                                     var _args = reader.readList();
                                     copyargs(_args, args);
-                                    tag = stream.readChar();
+                                    tag = stream.readByte();
                                 }
                             }
                             else if (tag === Tags.TagError) {
                                 error = new Error(reader.readString());
-                                tag = stream.readChar();
+                                tag = stream.readByte();
                             }
                             if (tag !== Tags.TagEnd) {
-                                error = new Error('Wrong Response:\r\n' + response);
+                                error = new Error('Wrong Response:\r\n' + BytesIO.toString(response));
                             }
                         }
                     }
@@ -519,32 +520,32 @@
             var request = batches.reduce(function(stream, item) {
                 stream.write(encode(item.name, item.args, item.context));
                 return stream;
-            }, new StringIO());
-            request.write(Tags.TagEnd);
+            }, new BytesIO());
+            request.writeByte(Tags.TagEnd);
             return Future.promise(function(resolve, reject) {
-                sendAndReceive(request.toString(), context, function(response) {
+                sendAndReceive(request.bytes, context, function(response) {
                     if (context.oneway) {
                         resolve(batches);
                         return;
                     }
                     var i = -1;
-                    var stream = new StringIO(response);
-                    var reader = new Reader(stream, false, false);
-                    var tag = stream.readChar();
+                    var stream = new BytesIO(response);
+                    var reader = new Reader(stream, false);
+                    var tag = stream.readByte();
                     try {
                         while (tag !== Tags.TagEnd) {
                             var result = null;
                             var error = null;
                             var mode = batches[++i].context.mode;
                             if (mode >= ResultMode.Raw) {
-                                result = new StringIO();
+                                result = new BytesIO();
                             }
                             if (tag === Tags.TagResult) {
                                 if (mode === ResultMode.Serialized) {
                                     result = reader.readRaw();
                                 }
                                 else if (mode >= ResultMode.Raw) {
-                                    result.write(Tags.TagResult);
+                                    result.writeByte(Tags.TagResult);
                                     result.write(reader.readRaw());
                                 }
                                 else {
@@ -552,10 +553,10 @@
                                     reader.reset();
                                     result = reader.unserialize();
                                 }
-                                tag = stream.readChar();
+                                tag = stream.readByte();
                                 if (tag === Tags.TagArgument) {
                                     if (mode >= ResultMode.Raw) {
-                                        result.write(Tags.TagArgument);
+                                        result.writeByte(Tags.TagArgument);
                                         result.write(reader.readRaw());
                                     }
                                     else {
@@ -563,31 +564,31 @@
                                         var _args = reader.readList();
                                         copyargs(_args, batches[i].args);
                                     }
-                                    tag = stream.readChar();
+                                    tag = stream.readByte();
                                 }
                             }
                             else if (tag === Tags.TagError) {
                                 if (mode >= ResultMode.Raw) {
-                                    result.write(Tags.TagError);
+                                    result.writeByte(Tags.TagError);
                                     result.write(reader.readRaw());
                                 }
                                 else {
                                     reader.reset();
                                     error = new Error(reader.readString());
                                 }
-                                tag = stream.readChar();
+                                tag = stream.readByte();
                             }
                             if ([Tags.TagEnd,
                                  Tags.TagResult,
                                  Tags.TagError].indexOf(tag) < 0) {
-                                reject(new Error('Wrong Response:\r\n' + response));
+                                reject(new Error('Wrong Response:\r\n' + BytesIO.toString(response)));
                                 return;
                             }
                             if (mode >= ResultMode.Raw) {
                                 if (mode === ResultMode.RawWithEndTag) {
-                                    result.write(Tags.TagEnd);
+                                    result.writeByte(Tags.TagEnd);
                                 }
-                                batches[i].result = result.toString();
+                                batches[i].result = result.bytes;
                             }
                             else {
                                 batches[i].result = result;
@@ -670,6 +671,22 @@
             return promise;
         }
 
+        function getOnError() {
+            return _onerror;
+        }
+        function setOnError(value) {
+            if (typeof(value) === s_function) {
+                _onerror = value;
+            }
+        }
+        function getOnFailswitch() {
+            return _onfailswitch;
+        }
+        function setOnFailswitch(value) {
+            if (typeof(value) === s_function) {
+                _onfailswitch = value;
+            }
+        }
         function getUri() {
             return _uri;
         }
@@ -702,7 +719,7 @@
         function getTimeout() {
             return _timeout;
         }
-        function _setTimeout(value) {
+        function setTimeout(value) {
             if (typeof(value) === 'number') {
                 _timeout = value | 0;
             }
@@ -1097,14 +1114,14 @@
         });
         Object.defineProperties(this, {
             '#': { value: autoId },
-            onerror: { value: null, writable: true },
-            onfailswitch: { value: null, writable: true },
+            onerror: { get: getOnError, set: setOnError },
+            onfailswitch: { get: getOnFailswitch, set: setOnFailswitch },
             uri: { get: getUri },
             uriList: { get: getUriList, set: setUriList },
             id: { get: getId },
             failswitch: { get: getFailswitch, set: setFailswitch },
             failround: { get: getFailround },
-            timeout: { get: getTimeout, set: _setTimeout },
+            timeout: { get: getTimeout, set: setTimeout },
             retry: { get: getRetry, set: setRetry },
             idempotent: { get: getIdempotent, set: setIdempotent },
             keepAlive: { get: getKeepAlive, set: setKeepAlive },
@@ -1133,7 +1150,7 @@
                  'keepAlive', 'byref', 'simple','useHarmonyMap',
                  'filter'].forEach(function(key) {
                      if (key in settings) {
-                         self[key](settings[key]);
+                         self[key] = settings[key];
                      }
                 });
             }
@@ -1147,7 +1164,10 @@
     function checkuri(uri) {
         var parser = parseuri(uri);
         var protocol = parser.protocol;
-        if (protocol === 'http:' || protocol === 'https:') {
+        if (protocol === 'http:' ||
+            protocol === 'https:' ||
+            protocol === 'ws:' ||
+            protocol === 'wss:') {
             return;
         }
         throw new Error('The ' + protocol + ' client isn\'t implemented.');
@@ -1156,6 +1176,10 @@
     function create(uri, functions, settings) {
         try {
             return hprose.HttpClient.create(uri, functions, settings);
+        }
+        catch(e) {}
+        try {
+            return hprose.WebSocketClient.create(uri, functions, settings);
         }
         catch(e) {}
         if (typeof uri === 'string') {
@@ -1168,9 +1192,7 @@
         throw new Error('You should set server uri first!');
     }
 
-    Object.defineProperties(Client, {
-        create: { value: create }
-    });
+    Object.defineProperty(Client, 'create', { value: create });
 
     hprose.Client = Client;
 

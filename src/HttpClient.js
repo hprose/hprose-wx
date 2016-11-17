@@ -12,7 +12,7 @@
  *                                                        *
  * hprose http client for WeChat App.                     *
  *                                                        *
- * LastModified: Nov 17, 2016                             *
+ * LastModified: Nov 18, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -23,6 +23,7 @@
     var Client = hprose.Client;
     var Future = hprose.Future;
     var parseuri = hprose.parseuri;
+    var BytesIO = hprose.BytesIO;
 
     function HttpClient(uri, functions, settings) {
         if (this.constructor !== HttpClient) {
@@ -43,12 +44,15 @@
             wx.request({
                 url: self.uri,
                 method: 'POST',
-                data: request,
+                data: BytesIO.toString(request),
                 header: header,
                 timeout: env.timeout,
                 complete: function(ret) {
-                    if (parseInt(ret.statusCode, 10) === 200) {
-                        future.resolve(ret.data);
+                    if (typeof ret.statusCode === "undefined") {
+                        future.reject(new Error(ret.errMsg));
+                    }
+                    else if (parseInt(ret.statusCode, 10) === 200) {
+                        future.resolve(new BytesIO(ret.data).takeBytes());
                     }
                     else {
                         future.reject(new Error(ret.statusCode + ":" + ret.data));

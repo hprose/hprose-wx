@@ -13,7 +13,7 @@
  *                                                        *
  * hprose helper for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -111,7 +111,47 @@
         'slice'
     ]);
 
-    hprose.parseuri = function(url) {
+    var arrayLikeObjectArgumentsEnabled = true;
+
+    try {
+        String.fromCharCode.apply(String, new Uint8Array([1]));
+    }
+    catch (e) {
+        arrayLikeObjectArgumentsEnabled = false;
+    }
+
+    function toArray(arrayLikeObject) {
+        var n = arrayLikeObject.length;
+        var a = new Array(n);
+        for (var i = 0; i < n; ++i) {
+            a[i] = arrayLikeObject[i];
+        }
+        return a;
+    }
+
+    var getCharCodes = arrayLikeObjectArgumentsEnabled ? function(bytes) { return bytes; } : toArray;
+
+    function toBinaryString(bytes) {
+        if (bytes instanceof ArrayBuffer) {
+            bytes = new Uint8Array(bytes);
+        }
+        var n = bytes.length;
+        if (n < 0xFFFF) {
+            return String.fromCharCode.apply(String, getCharCodes(bytes));
+        }
+        var remain = n & 0x7FFF;
+        var count = n >> 15;
+        var a = new Array(remain ? count + 1 : count);
+        for (var i = 0; i < count; ++i) {
+            a[i] = String.fromCharCode.apply(String, getCharCodes(bytes.subarray(i << 15, (i + 1) << 15)));
+        }
+        if (remain) {
+            a[count] = String.fromCharCode.apply(String, getCharCodes(bytes.subarray(count << 15, n)));
+        }
+        return a.join('');
+    }
+
+    function parseuri(url) {
         var pattern = new RegExp("^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?");
         var matches =  url.match(pattern);
         var host = matches[4].split(':', 2);
@@ -124,9 +164,9 @@
             query: matches[7],
             fragment: matches[9]
         };
-    };
+    }
 
-    hprose.isObjectEmpty = function (obj) {
+    function isObjectEmpty(obj) {
         if (obj) {
             var prop;
             for (prop in obj) {
@@ -134,6 +174,11 @@
             }
         }
         return true;
-    };
+    }
+
+    hprose.generic = generic;
+    hprose.toBinaryString = toBinaryString;
+    hprose.parseuri = parseuri
+    hprose.isObjectEmpty = isObjectEmpty;
 
 })(hprose);

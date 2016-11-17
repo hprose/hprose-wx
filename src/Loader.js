@@ -37,7 +37,6 @@ hprose.io = {
 hprose.client = {
     Client: hprose.Client,
     HttpClient: hprose.HttpClient,
-    TcpClient: hprose.TcpClient,
     WebSocketClient: hprose.WebSocketClient
 };
 

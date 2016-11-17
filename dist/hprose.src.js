@@ -40,7 +40,7 @@ var hprose = Object.create(null);
  *                                                        *
  * hprose helper for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -138,7 +138,47 @@ var hprose = Object.create(null);
         'slice'
     ]);
 
-    hprose.parseuri = function(url) {
+    var arrayLikeObjectArgumentsEnabled = true;
+
+    try {
+        String.fromCharCode.apply(String, new Uint8Array([1]));
+    }
+    catch (e) {
+        arrayLikeObjectArgumentsEnabled = false;
+    }
+
+    function toArray(arrayLikeObject) {
+        var n = arrayLikeObject.length;
+        var a = new Array(n);
+        for (var i = 0; i < n; ++i) {
+            a[i] = arrayLikeObject[i];
+        }
+        return a;
+    }
+
+    var getCharCodes = arrayLikeObjectArgumentsEnabled ? function(bytes) { return bytes; } : toArray;
+
+    function toBinaryString(bytes) {
+        if (bytes instanceof ArrayBuffer) {
+            bytes = new Uint8Array(bytes);
+        }
+        var n = bytes.length;
+        if (n < 0xFFFF) {
+            return String.fromCharCode.apply(String, getCharCodes(bytes));
+        }
+        var remain = n & 0x7FFF;
+        var count = n >> 15;
+        var a = new Array(remain ? count + 1 : count);
+        for (var i = 0; i < count; ++i) {
+            a[i] = String.fromCharCode.apply(String, getCharCodes(bytes.subarray(i << 15, (i + 1) << 15)));
+        }
+        if (remain) {
+            a[count] = String.fromCharCode.apply(String, getCharCodes(bytes.subarray(count << 15, n)));
+        }
+        return a.join('');
+    }
+
+    function parseuri(url) {
         var pattern = new RegExp("^(([^:/?#]+):)?(//([^/?#]*))?([^?#]*)(\\?([^#]*))?(#(.*))?");
         var matches =  url.match(pattern);
         var host = matches[4].split(':', 2);
@@ -151,9 +191,9 @@ var hprose = Object.create(null);
             query: matches[7],
             fragment: matches[9]
         };
-    };
+    }
 
-    hprose.isObjectEmpty = function (obj) {
+    function isObjectEmpty(obj) {
         if (obj) {
             var prop;
             for (prop in obj) {
@@ -161,7 +201,12 @@ var hprose = Object.create(null);
             }
         }
         return true;
-    };
+    }
+
+    hprose.generic = generic;
+    hprose.toBinaryString = toBinaryString;
+    hprose.parseuri = parseuri
+    hprose.isObjectEmpty = isObjectEmpty;
 
 })(hprose);
 
@@ -1368,64 +1413,64 @@ TimeoutError.prototype.constructor = TimeoutError;
 
 /**********************************************************\
  *                                                        *
- * StringIO.js                                            *
+ * BytesIO.js                                             *
  *                                                        *
- * hprose StringIO for WeChat App.                        *
+ * hprose BytesIO for WeChat App.                         *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
 (function (hprose, undefined) {
     'use strict';
-    // i is a int32 number
-    function int32BE(i) {
-        return String.fromCharCode(
-            i >>> 24 & 0xFF,
-            i >>> 16 & 0xFF,
-            i >>> 8  & 0xFF,
-            i        & 0xFF
-        );
+
+    var toBinaryString = hprose.toBinaryString;
+
+    var _EMPTY_BYTES = new Uint8Array(0);
+    var _INIT_SIZE = 1024;
+
+    function writeInt32BE(bytes, p, i) {
+        bytes[p++] = i >>> 24 & 0xFF;
+        bytes[p++] = i >>> 16 & 0xFF;
+        bytes[p++] = i >>> 8  & 0xFF;
+        bytes[p++] = i        & 0xFF;
+        return p;
     }
 
-    // i is a int32 number
-    function int32LE(i) {
-        return String.fromCharCode(
-            i        & 0xFF,
-            i >>> 8  & 0xFF,
-            i >>> 16 & 0xFF,
-            i >>> 24 & 0xFF
-        );
+    function writeInt32LE(bytes, p, i) {
+        bytes[p++] = i        & 0xFF;
+        bytes[p++] = i >>> 8  & 0xFF;
+        bytes[p++] = i >>> 16 & 0xFF;
+        bytes[p++] = i >>> 24 & 0xFF;
+        return p;
     }
 
-    // s is an UTF16 encode string
-    function utf8Encode(s) {
-        var buf = [];
-        var n = s.length;
-        for (var i = 0, j = 0; i < n; ++i, ++j) {
-            var codeUnit = s.charCodeAt(i);
+    function writeString(bytes, p, str) {
+        var n = str.length;
+        for (var i = 0; i < n; ++i) {
+            var codeUnit = str.charCodeAt(i);
             if (codeUnit < 0x80) {
-                buf[j] = s.charAt(i);
+                bytes[p++] = codeUnit;
             }
             else if (codeUnit < 0x800) {
-                buf[j] = String.fromCharCode(0xC0 | (codeUnit >> 6),
-                                             0x80 | (codeUnit & 0x3F));
+                bytes[p++] = 0xC0 | (codeUnit >> 6);
+                bytes[p++] = 0x80 | (codeUnit & 0x3F);
             }
             else if (codeUnit < 0xD800 || codeUnit > 0xDFFF) {
-                buf[j] = String.fromCharCode(0xE0 | (codeUnit >> 12),
-                                             0x80 | ((codeUnit >> 6) & 0x3F),
-                                             0x80 | (codeUnit & 0x3F));
+                bytes[p++] = 0xE0 | (codeUnit >> 12);
+                bytes[p++] = 0x80 | ((codeUnit >> 6) & 0x3F);
+                bytes[p++] = 0x80 | (codeUnit & 0x3F);
             }
             else {
                 if (i + 1 < n) {
-                    var nextCodeUnit = s.charCodeAt(i + 1);
+                    var nextCodeUnit = str.charCodeAt(i + 1);
                     if (codeUnit < 0xDC00 && 0xDC00 <= nextCodeUnit && nextCodeUnit <= 0xDFFF) {
                         var rune = (((codeUnit & 0x03FF) << 10) | (nextCodeUnit & 0x03FF)) + 0x010000;
-                        buf[j] = String.fromCharCode(0xF0 | ((rune >> 18) &0x3F),
-                                                     0x80 | ((rune >> 12) & 0x3F),
-                                                     0x80 | ((rune >> 6) & 0x3F),
-                                                     0x80 | (rune & 0x3F));
+                        bytes[p++] = 0xF0 | (rune >> 18);
+                        bytes[p++] = 0x80 | ((rune >> 12) & 0x3F);
+                        bytes[p++] = 0x80 | ((rune >> 6) & 0x3F);
+                        bytes[p++] = 0x80 | (rune & 0x3F);
                         ++i;
                         continue;
                     }
@@ -1433,14 +1478,14 @@ TimeoutError.prototype.constructor = TimeoutError;
                 throw new Error('Malformed string');
             }
         }
-        return buf.join('');
+        return p;
     }
 
-    function readShortString(bs, n) {
+    function readShortString(bytes, n) {
         var charCodes = new Array(n);
         var i = 0, off = 0;
-        for (var len = bs.length; i < n && off < len; i++) {
-            var unit = bs.charCodeAt(off++);
+        for (var len = bytes.length; i < n && off < len; i++) {
+            var unit = bytes[off++];
             switch (unit >> 4) {
             case 0:
             case 1:
@@ -1456,24 +1501,24 @@ TimeoutError.prototype.constructor = TimeoutError;
             case 13:
                 if (off < len) {
                     charCodes[i] = ((unit & 0x1F) << 6) |
-                                    (bs.charCodeAt(off++) & 0x3F);
+                                    (bytes[off++] & 0x3F);
                     break;
                 }
                 throw new Error('Unfinished UTF-8 octet sequence');
             case 14:
                 if (off + 1 < len) {
                     charCodes[i] = ((unit & 0x0F) << 12) |
-                                   ((bs.charCodeAt(off++) & 0x3F) << 6) |
-                                   (bs.charCodeAt(off++) & 0x3F);
+                                   ((bytes[off++] & 0x3F) << 6) |
+                                   (bytes[off++] & 0x3F);
                     break;
                 }
                 throw new Error('Unfinished UTF-8 octet sequence');
             case 15:
                 if (off + 2 < len) {
                     var rune = (((unit & 0x07) << 18) |
-                                ((bs.charCodeAt(off++) & 0x3F) << 12) |
-                                ((bs.charCodeAt(off++) & 0x3F) << 6) |
-                                (bs.charCodeAt(off++) & 0x3F)) - 0x10000;
+                                ((bytes[off++] & 0x3F) << 12) |
+                                ((bytes[off++] & 0x3F) << 6) |
+                                (bytes[off++] & 0x3F)) - 0x10000;
                     if (0 <= rune && rune <= 0xFFFFF) {
                         charCodes[i++] = (((rune >> 10) & 0x03FF) | 0xD800);
                         charCodes[i] = ((rune & 0x03FF) | 0xDC00);
@@ -1492,12 +1537,12 @@ TimeoutError.prototype.constructor = TimeoutError;
         return [String.fromCharCode.apply(String, charCodes), off];
     }
 
-    function readLongString(bs, n) {
+    function readLongString(bytes, n) {
         var buf = [];
         var charCodes = new Array(0x8000);
         var i = 0, off = 0;
-        for (var len = bs.length; i < n && off < len; i++) {
-            var unit = bs.charCodeAt(off++);
+        for (var len = bytes.length; i < n && off < len; i++) {
+            var unit = bytes[off++];
             switch (unit >> 4) {
             case 0:
             case 1:
@@ -1513,24 +1558,24 @@ TimeoutError.prototype.constructor = TimeoutError;
             case 13:
                 if (off < len) {
                     charCodes[i] = ((unit & 0x1F) << 6) |
-                                    (bs.charCodeAt(off++) & 0x3F);
+                                    (bytes[off++] & 0x3F);
                     break;
                 }
                 throw new Error('Unfinished UTF-8 octet sequence');
             case 14:
                 if (off + 1 < len) {
                     charCodes[i] = ((unit & 0x0F) << 12) |
-                                   ((bs.charCodeAt(off++) & 0x3F) << 6) |
-                                   (bs.charCodeAt(off++) & 0x3F);
+                                   ((bytes[off++] & 0x3F) << 6) |
+                                   (bytes[off++] & 0x3F);
                     break;
                 }
                 throw new Error('Unfinished UTF-8 octet sequence');
             case 15:
                 if (off + 2 < len) {
                     var rune = (((unit & 0x07) << 18) |
-                                ((bs.charCodeAt(off++) & 0x3F) << 12) |
-                                ((bs.charCodeAt(off++) & 0x3F) << 6) |
-                                (bs.charCodeAt(off++) & 0x3F)) - 0x10000;
+                                ((bytes[off++] & 0x3F) << 12) |
+                                ((bytes[off++] & 0x3F) << 6) |
+                                (bytes[off++] & 0x3F)) - 0x10000;
                     if (0 <= rune && rune <= 0xFFFFF) {
                         charCodes[i++] = (((rune >> 10) & 0x03FF) | 0xD800);
                         charCodes[i] = ((rune & 0x03FF) | 0xDC00);
@@ -1545,36 +1590,32 @@ TimeoutError.prototype.constructor = TimeoutError;
             if (i >= 0x7FFF - 1) {
                 var size = i + 1;
                 charCodes.length = size;
-                buf[buf.length] = String.fromCharCode.apply(String, charCodes);
+                buf.push(String.fromCharCode.apply(String, charCodes));
                 n -= size;
                 i = -1;
             }
         }
         if (i > 0) {
             charCodes.length = i;
-            buf[buf.length] = String.fromCharCode.apply(String, charCodes);
+            buf.push(String.fromCharCode.apply(String, charCodes));
         }
         return [buf.join(''), off];
     }
 
-    // bs is an UTF8 encode binary string
-    // n is UTF16 length
-    function readString(bs, n) {
-        if (n === undefined || n === null || (n < 0)) { n = bs.length; }
+    function readString(bytes, n) {
+        if (n === undefined || n === null || (n < 0)) { n = bytes.length; }
         if (n === 0) { return ['', 0]; }
         return ((n < 0xFFFF) ?
-                readShortString(bs, n) :
-                readLongString(bs, n));
+                readShortString(bytes, n) :
+                readLongString(bytes, n));
     }
 
-    // bs is an UTF8 encode binary string
-    // n is UTF16 length
-    function readUTF8(bs, n) {
-        if (n === undefined || n === null || (n < 0)) { n = bs.length; }
-        if (n === 0) { return ''; }
+    function readStringAsBytes(bytes, n) {
+        if (n === undefined) { n = bytes.length; }
+        if (n === 0) { return [_EMPTY_BYTES, 0]; }
         var i = 0, off = 0;
-        for (var len = bs.length; i < n && off < len; i++) {
-            var unit = bs.charCodeAt(off++);
+        for (var len = bytes.length; i < n && off < len; i++) {
+            var unit = bytes[off++];
             switch (unit >> 4) {
             case 0:
             case 1:
@@ -1588,7 +1629,7 @@ TimeoutError.prototype.constructor = TimeoutError;
             case 12:
             case 13:
                 if (off < len) {
-                    ++off;
+                    off++;
                     break;
                 }
                 throw new Error('Unfinished UTF-8 octet sequence');
@@ -1601,10 +1642,11 @@ TimeoutError.prototype.constructor = TimeoutError;
             case 15:
                 if (off + 2 < len) {
                     var rune = (((unit & 0x07) << 18) |
-                                ((bs.charCodeAt(off++) & 0x3F) << 12) |
-                                ((bs.charCodeAt(off++) & 0x3F) << 6) |
-                                (bs.charCodeAt(off++) & 0x3F)) - 0x10000;
+                                ((bytes[off++] & 0x3F) << 12) |
+                                ((bytes[off++] & 0x3F) << 6) |
+                                (bytes[off++] & 0x3F)) - 0x10000;
                     if (0 <= rune && rune <= 0xFFFFF) {
+                        i++;
                         break;
                     }
                     throw new Error('Character outside valid Unicode range: 0x' + rune.toString(16));
@@ -1614,248 +1656,209 @@ TimeoutError.prototype.constructor = TimeoutError;
                 throw new Error('Bad UTF-8 encoding 0x' + unit.toString(16));
             }
         }
-        return bs.substr(0, off);
+        return [bytes.subarray(0, off), off];
     }
 
-    // bs is an UTF8 encode binary string
-    function utf8Decode(bs) {
-        return readString(bs)[0];
+    function pow2roundup(x) {
+        --x;
+        x |= x >> 1;
+        x |= x >> 2;
+        x |= x >> 4;
+        x |= x >> 8;
+        x |= x >> 16;
+        return x + 1;
     }
 
-    // s is an UTF16 encode string
-    function utf8Length(s) {
-        var n = s.length;
-        var length = 0;
-        for (var i = 0; i < n; ++i) {
-            var codeUnit = s.charCodeAt(i);
-            if (codeUnit < 0x80) {
-                ++length;
-            }
-            else if (codeUnit < 0x800) {
-                length += 2;
-            }
-            else if (codeUnit < 0xD800 || codeUnit > 0xDFFF) {
-                length += 3;
-            }
-            else {
-                if (i + 1 < n) {
-                    var nextCodeUnit = s.charCodeAt(i + 1);
-                    if (codeUnit < 0xDC00 && 0xDC00 <= nextCodeUnit && nextCodeUnit <= 0xDFFF) {
-                        ++i;
-                        length += 4;
-                        continue;
-                    }
-                }
-                throw new Error('Malformed string');
-            }
-        }
-        return length;
-    }
-
-    // bs is an UTF8 encode binary string
-    function utf16Length(bs) {
-        var n = bs.length;
-        var length = 0;
-        for (var i = 0; i < n; ++i, ++length) {
-            var unit = bs.charCodeAt(i);
-            switch (unit >> 4) {
-            case 0:
-            case 1:
-            case 2:
-            case 3:
-            case 4:
-            case 5:
-            case 6:
-            case 7:
-                break;
-            case 12:
-            case 13:
-                if (i < n) {
-                    ++i;
-                    break;
-                }
-                throw new Error('Unfinished UTF-8 octet sequence');
-            case 14:
-                if (i + 1 < n) {
-                    i += 2;
-                    break;
-                }
-                throw new Error('Unfinished UTF-8 octet sequence');
-            case 15:
-                if (i + 2 < n) {
-                    var rune = (((unit & 0x07) << 18) |
-                                ((bs.charCodeAt(i++) & 0x3F) << 12) |
-                                ((bs.charCodeAt(i++) & 0x3F) << 6) |
-                                (bs.charCodeAt(i++) & 0x3F)) - 0x10000;
-                    if (0 <= rune && rune <= 0xFFFFF) {
-                        ++length;
-                        break;
-                    }
-                    throw new Error('Character outside valid Unicode range: 0x' + rune.toString(16));
-                }
-                throw new Error('Unfinished UTF-8 octet sequence');
-            default:
-                throw new Error('Bad UTF-8 encoding 0x' + unit.toString(16));
-            }
-        }
-        return length;
-    }
-
-    function isUTF8(bs) {
-        for (var i = 0, n = bs.length; i < n; ++i) {
-            var unit = bs.charCodeAt(i);
-            switch (unit >> 4) {
-            case 0:
-            case 1:
-            case 2:
-            case 3:
-            case 4:
-            case 5:
-            case 6:
-            case 7:
-                break;
-            case 12:
-            case 13:
-                if (i < n) {
-                    ++i;
-                    break;
-                }
-                return false;
-            case 14:
-                if (i + 1 < n) {
-                    i += 2;
-                    break;
-                }
-                return false;
-            case 15:
-                if (i + 2 < n) {
-                    var rune = (((unit & 0x07) << 18) |
-                                ((bs.charCodeAt(i++) & 0x3F) << 12) |
-                                ((bs.charCodeAt(i++) & 0x3F) << 6) |
-                                (bs.charCodeAt(i++) & 0x3F)) - 0x10000;
-                    if (0 <= rune && rune <= 0xFFFFF) {
-                        break;
-                    }
-                }
-                return false;
-            default:
-                return false;
-            }
-        }
-        return true;
-    }
-
-    function StringIO() {
+    function BytesIO() {
         var a = arguments;
         switch (a.length) {
         case 1:
-            this._buffer = [a[0].toString()];
+            switch (a[0].constructor) {
+            case Uint8Array:
+                this._bytes = a[0];
+                this._length = a[0].length;
+                break;
+            case BytesIO:
+                this._bytes = a[0].toBytes();
+                this._length = a[0].length;
+                break;
+            case String:
+                this.writeString(a[0]);
+                break;
+            case Number:
+                this._bytes = new Uint8Array(a[0]);
+                break;
+            default:
+                this._bytes = new Uint8Array(a[0]);
+                this._length = this._bytes.length;
+                break;
+            }
             break;
         case 2:
-            this._buffer = [a[0].toString().substr(a[1])];
+            this._bytes = new Uint8Array(a[0], a[1]);
+            this._length = a[1];
             break;
         case 3:
-            this._buffer = [a[0].toString().substr(a[1], a[2])];
-            break;
-        default:
-            this._buffer = [''];
+            this._bytes = new Uint8Array(a[0], a[1], a[2]);
+            this._length = a[2];
             break;
         }
         this.mark();
     }
 
-    Object.defineProperties(StringIO.prototype, {
-        _buffer: { writable: true },
+    Object.defineProperties(BytesIO.prototype, {
+        _bytes: { value: null, writable: true },
+        _length: { value: 0, writable: true },
+        _wmark: { value: 0, writable: true },
         _off: { value: 0, writable: true },
-        _wmark: { writable: true },
-        _rmark: { writable: true },
-        toString: { value: function() {
-            if (this._buffer.length > 1) {
-                this._buffer = [this._buffer.join('')];
+        _rmark: { value: 0, writable: true },
+        _grow: { value: function(n) {
+            var bytes = this._bytes;
+            var required = this._length + n;
+            var size = pow2roundup(required);
+            if (bytes) {
+                size *= 2;
+                if (size > bytes.length) {
+                    var buf = new Uint8Array(size);
+                    buf.set(bytes);
+                    this._bytes = buf;
+                }
             }
-            return this._buffer[0];
+            else {
+                size = Math.max(size, _INIT_SIZE);
+                this._bytes = new Uint8Array(size);
+            }
         } },
-        length: { get: function() {
-            return this.toString().length;
+        length: { get: function() { return this._length; } },
+        capacity: { get: function() {
+            return this._bytes ? this._bytes.length : 0;
         } },
-        position: { get: function() {
-            return this._off;
+        position: { get: function() { return this._off; } },
+        // returns a view of the the internal buffer.
+        bytes: { get : function() {
+            return (this._bytes === null) ?
+                    _EMPTY_BYTES :
+                    this._bytes.subarray(0, this._length);
+        } },
+        buffer: { get : function() {
+            if (this._bytes === null) {
+                return _EMPTY_BYTES.buffer;
+            }
+            if (this._bytes.buffer.slice) {
+                return this._bytes.buffer.slice(0, this._length);
+            }
+            var buf = new Uint8Array(this._length);
+            buf.set(this._bytes.subarray(0, this._length));
+            return buf.buffer;
         } },
         mark: { value: function() {
-            this._wmark = this.length;
+            this._wmark = this._length;
             this._rmark = this._off;
         } },
         reset: { value: function() {
-            this._buffer = [this.toString().substr(0, this._wmark)];
+            this._length = this._wmark;
             this._off = this._rmark;
         } },
         clear: { value: function() {
-            this._buffer = [''];
+            this._bytes = null;
+            this._length = 0;
             this._wmark = 0;
             this._off = 0;
             this._rmark = 0;
         } },
         writeByte: { value: function(b) {
-            this._buffer.push(String.fromCharCode(b & 0xFF));
+            this._grow(1);
+            this._bytes[this._length++] = b;
         } },
         writeInt32BE: { value: function(i) {
             if ((i === (i | 0)) && (i <= 2147483647)) {
-                this._buffer.push(int32BE(i));
+                this._grow(4);
+                this._length = writeInt32BE(this._bytes, this._length, i);
                 return;
             }
             throw new TypeError('value is out of bounds');
         } },
         writeUInt32BE: { value: function(i) {
             if (((i & 0x7FFFFFFF) + 0x80000000 === i) && (i >= 0)) {
-                this._buffer.push(int32BE(i | 0));
+                this._grow(4);
+                this._length = writeInt32BE(this._bytes, this._length, i | 0);
                 return;
             }
             throw new TypeError('value is out of bounds');
         } },
         writeInt32LE: { value: function(i) {
             if ((i === (i | 0)) && (i <= 2147483647)) {
-                this._buffer.push(int32LE(i));
+                this._grow(4);
+                this._length = writeInt32LE(this._bytes, this._length, i);
                 return;
             }
             throw new TypeError('value is out of bounds');
         } },
         writeUInt32LE: { value: function(i) {
             if (((i & 0x7FFFFFFF) + 0x80000000 === i) && (i >= 0)) {
-                this._buffer.push(int32LE(i | 0));
+                this._grow(4);
+                this._length = writeInt32LE(this._bytes, this._length, i | 0);
                 return;
             }
             throw new TypeError('value is out of bounds');
         } },
-        writeUTF16AsUTF8: { value: function(str) {
-            this._buffer.push(utf8Encode(str));
-        } },
-        writeUTF8AsUTF16: { value: function(str) {
-            this._buffer.push(utf8Decode(str));
-        } },
         write: { value: function(data) {
-            this._buffer.push(data);
+            var n = data.byteLength || data.length;
+            if (n === 0) { return; }
+            this._grow(n);
+            var bytes = this._bytes;
+            var length = this._length;
+            switch (data.constructor) {
+            case ArrayBuffer:
+                bytes.set(new Uint8Array(data), length);
+                break;
+            case Uint8Array:
+                bytes.set(data, length);
+                break;
+            case BytesIO:
+                bytes.set(data.bytes, length);
+                break;
+            default:
+                for (var i = 0; i < n; i++) {
+                    bytes[length + i] = data[i];
+                }
+                break;
+            }
+            this._length += n;
+        } },
+        writeAsciiString: { value: function(str) {
+            var n = str.length;
+            if (n === 0) { return; }
+            this._grow(n);
+            var bytes = this._bytes;
+            var l = this._length;
+            for (var i = 0; i < n; ++i, ++l) {
+                bytes[l] = str.charCodeAt(i);
+            }
+            this._length = l;
+        } },
+        writeString: { value: function(str) {
+            var n = str.length;
+            if (n === 0) { return; }
+            // A single code unit uses at most 3 bytes.
+            // Two code units at most 4.
+            this._grow(n * 3);
+            this._length = writeString(this._bytes, this._length, str);
         } },
         readByte: { value: function() {
-            if (this._off < this.length) {
-                return this._buffer[0].charCodeAt(this._off++);
+            if (this._off < this._length) {
+                return this._bytes[this._off++];
             }
             return -1;
         } },
-        readChar: { value: function() {
-            if (this._off < this.length) {
-                return this._buffer[0].charAt(this._off++);
-            }
-            return '';
-        } },
         readInt32BE: { value: function() {
-            var len = this.length;
-            var buf = this._buffer[0];
+            var bytes = this._bytes;
             var off = this._off;
-            if (off + 3 < len) {
-                var result = buf.charCodeAt(off++) << 24 |
-                             buf.charCodeAt(off++) << 16 |
-                             buf.charCodeAt(off++) << 8  |
-                             buf.charCodeAt(off++);
+            if (off + 3 < this._length) {
+                var result = bytes[off++] << 24 |
+                             bytes[off++] << 16 |
+                             bytes[off++] << 8  |
+                             bytes[off++];
                 this._off = off;
                 return result;
             }
@@ -1869,14 +1872,13 @@ TimeoutError.prototype.constructor = TimeoutError;
             return value;
         } },
         readInt32LE: { value: function() {
-            var len = this.length;
-            var buf = this._buffer[0];
+            var bytes = this._bytes;
             var off = this._off;
-            if (off + 3 < len) {
-                var result = buf.charCodeAt(off++)       |
-                             buf.charCodeAt(off++) << 8  |
-                             buf.charCodeAt(off++) << 16 |
-                             buf.charCodeAt(off++) << 24;
+            if (off + 3 < this._length) {
+                var result = bytes[off++]       |
+                             bytes[off++] << 8  |
+                             bytes[off++] << 16 |
+                             bytes[off++] << 24;
                 this._off = off;
                 return result;
             }
@@ -1890,108 +1892,113 @@ TimeoutError.prototype.constructor = TimeoutError;
             return value;
         } },
         read: { value: function(n) {
-            var off = this._off;
-            var len = this.length;
-            if (off + n > len) {
-                n = len - off;
+            if (this._off + n > this._length) {
+                n = this._length - this._off;
             }
-            if (n === 0) { return ''; }
-            this._off = off + n;
-            return this._buffer[0].substring(off, this._off);
+            if (n === 0) { return _EMPTY_BYTES; }
+            return this._bytes.subarray(this._off, this._off += n);
         } },
         skip: { value: function(n) {
-            var len = this.length;
-            if (this._off + n > len) {
-                n = len - this._off;
-                this._off = len;
+            if (this._off + n > this._length) {
+                n = this._length - this._off;
+                this._off = this._length;
             }
             else {
                 this._off += n;
             }
             return n;
         } },
-        // the result is an String, and includes tag.
-        readString: { value: function(tag) {
-            var len = this.length;
-            var off = this._off;
-            var buf = this._buffer[0];
-            var pos = buf.indexOf(tag, off);
+        // the result is an Uint8Array, and includes tag.
+        readBytes: { value: function(tag) {
+            var pos = Array.indexOf(this._bytes, tag, this._off);
+            var buf;
             if (pos === -1) {
-                buf = buf.substr(off);
-                this._off = len;
+                buf = this._bytes.subarray(this._off, this._length);
+                this._off = this._length;
             }
             else {
-                buf = buf.substring(off, pos + 1);
+                buf = this._bytes.subarray(this._off, pos + 1);
                 this._off = pos + 1;
             }
             return buf;
         } },
         // the result is a String, and doesn't include tag.
-        // but the position is the same as readString
+        // but the position is the same as readBytes
         readUntil: { value: function(tag) {
-            var len = this.length;
-            var off = this._off;
-            var buf = this._buffer[0];
-            var pos = buf.indexOf(tag, off);
+            var pos = Array.indexOf(this._bytes, tag, this._off);
+            var str = '';
             if (pos === this._off) {
-                buf = '';
                 this._off++;
             }
             else if (pos === -1) {
-                buf = buf.substr(off);
-                this._off = len;
+                str = readString(this._bytes.subarray(this._off, this._length))[0];
+                this._off = this._length;
             }
             else {
-                buf = buf.substring(off, pos);
+                str = readString(this._bytes.subarray(this._off, pos))[0];
                 this._off = pos + 1;
             }
-            return buf;
+            return str;
+        } },
+        readAsciiString: { value: function(n) {
+            if (this._off + n > this._length) {
+                n = this._length - this._off;
+            }
+            if (n === 0) { return ''; }
+            return toBinaryString(this._bytes.subarray(this._off, this._off += n));
         } },
         // n is the UTF16 length
-        readUTF8: { value: function(n) {
-            var len = this.length;
-            var r = readUTF8(this._buffer[0].substring(this._off, Math.min(this._off + n * 3, len)), n);
-            this._off += r.length;
-            return r;
-        } },
-        // n is the UTF16 length
-        readUTF8AsUTF16: { value: function(n) {
-            var len = this.length;
-            var r = readString(this._buffer[0].substring(this._off, Math.min(this._off + n * 3, len)), n);
+        readStringAsBytes: { value: function(n) {
+            var r = readStringAsBytes(this._bytes.subarray(this._off, this._length), n);
             this._off += r[1];
             return r[0];
         } },
-        // n is also the UTF16 length
-        readUTF16AsUTF8: { value: function(n) {
-            return utf8Encode(this.read(n));
+        // n is the UTF16 length
+        readString: { value: function(n) {
+            var r = readString(this._bytes.subarray(this._off, this._length), n);
+            this._off += r[1];
+            return r[0];
         } },
         // returns a view of the the internal buffer and clears `this`.
-        take: { value: function() {
-            var buffer = this.toString();
+        takeBytes: { value: function() {
+            var buffer = this.bytes;
             this.clear();
             return buffer;
         } },
+        // returns a copy of the current contents and leaves `this` intact.
+        toBytes: { value: function() {
+            return new Uint8Array(this.bytes);
+        } },
+        toString: { value: function() {
+            return readString(this.bytes, this._length)[0];
+        } },
         clone: { value: function() {
-            return new StringIO(this.toString());
+            return new BytesIO(this.toBytes());
         } },
         trunc: { value: function() {
-            var buf = this.toString().substring(this._off, this._length);
-            this._buffer[0] = buf;
+            this._bytes = this._bytes.subarray(this._off, this._length);
+            this._length = this._bytes.length;
             this._off = 0;
             this._wmark = 0;
             this._rmark = 0;
         } }
     });
 
-    Object.defineProperties(StringIO, {
-        utf8Encode: { value: utf8Encode },
-        utf8Decode: { value: utf8Decode },
-        utf8Length: { value: utf8Length },
-        utf16Length: { value: utf16Length },
-        isUTF8: { value: isUTF8 }
-    });
+    function toString(data) {
+        /* jshint -W086 */
+        if (data.length === 0) { return ''; }
+        switch(data.constructor) {
+        case String: return data;
+        case BytesIO: data = data.bytes;
+        case ArrayBuffer: data = new Uint8Array(data);
+        case Uint8Array: return readString(data, data.length)[0];
+        default: return String.fromCharCode.apply(String, data);
+        }
+    }
 
-    hprose.StringIO = StringIO;
+    Object.defineProperty(BytesIO, 'toString', { value: toString });
+
+    hprose.BytesIO = BytesIO;
 
 })(hprose);
 
@@ -2009,49 +2016,49 @@ TimeoutError.prototype.constructor = TimeoutError;
  *                                                        *
  * hprose tags enum for WeChat App.                       *
  *                                                        *
- * LastModified: Nov 10, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
 hprose.Tags = {
     /* Serialize Tags */
-    TagInteger      : 'i',
-    TagLong         : 'l',
-    TagDouble       : 'd',
-    TagNull         : 'n',
-    TagEmpty        : 'e',
-    TagTrue         : 't',
-    TagFalse        : 'f',
-    TagNaN          : 'N',
-    TagInfinity     : 'I',
-    TagDate         : 'D',
-    TagTime         : 'T',
-    TagUTC          : 'Z',
-    TagBytes        : 'b', // This tag is not supported for WeChat App.
-    TagUTF8Char     : 'u',
-    TagString       : 's',
-    TagGuid         : 'g',
-    TagList         : 'a',
-    TagMap          : 'm',
-    TagClass        : 'c',
-    TagObject       : 'o',
-    TagRef          : 'r',
+    TagInteger     : 0x69, //  'i'
+    TagLong        : 0x6C, //  'l'
+    TagDouble      : 0x64, //  'd'
+    TagNull        : 0x6E, //  'n'
+    TagEmpty       : 0x65, //  'e'
+    TagTrue        : 0x74, //  't'
+    TagFalse       : 0x66, //  'f'
+    TagNaN         : 0x4E, //  'N'
+    TagInfinity    : 0x49, //  'I'
+    TagDate        : 0x44, //  'D'
+    TagTime        : 0x54, //  'T'
+    TagUTC         : 0x5A, //  'Z'
+    TagBytes       : 0x62, //  'b'
+    TagUTF8Char    : 0x75, //  'u'
+    TagString      : 0x73, //  's'
+    TagGuid        : 0x67, //  'g'
+    TagList        : 0x61, //  'a'
+    TagMap         : 0x6d, //  'm'
+    TagClass       : 0x63, //  'c'
+    TagObject      : 0x6F, //  'o'
+    TagRef         : 0x72, //  'r'
     /* Serialize Marks */
-    TagPos          : '+',
-    TagNeg          : '-',
-    TagSemicolon    : ';',
-    TagOpenbrace    : '{',
-    TagClosebrace   : '}',
-    TagQuote        : '"',
-    TagPoint        : '.',
+    TagPos         : 0x2B, //  '+'
+    TagNeg         : 0x2D, //  '-'
+    TagSemicolon   : 0x3B, //  ','
+    TagOpenbrace   : 0x7B, //  '{'
+    TagClosebrace  : 0x7D, //  '}'
+    TagQuote       : 0x22, //  '"'
+    TagPoint       : 0x2E, //  '.'
     /* Protocol Tags */
-    TagFunctions    : 'F',
-    TagCall         : 'C',
-    TagResult       : 'R',
-    TagArgument     : 'A',
-    TagError        : 'E',
-    TagEnd          : 'z'
+    TagFunctions   : 0x46, //  'F'
+    TagCall        : 0x43, //  'C'
+    TagResult      : 0x52, //  'R'
+    TagArgument    : 0x41, //  'A'
+    TagError       : 0x45, //  'E'
+    TagEnd         : 0x7A  //  'z'
 };
 
 /**********************************************************\
@@ -2120,16 +2127,17 @@ hprose.Tags = {
  *                                                        *
  * hprose Writer for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
 (function (hprose, undefined) {
     'use strict';
+    var Map = hprose.Map;
+    var BytesIO = hprose.BytesIO;
     var Tags = hprose.Tags;
     var ClassManager = hprose.ClassManager;
-    var Map = hprose.Map;
 
     function getClassName(obj) {
         var cls = obj.constructor;
@@ -2172,9 +2180,9 @@ hprose.Tags = {
         write: { value: function (val) {
             var index = this._ref.get(val);
             if (index !== undefined) {
-                this._stream.write(Tags.TagRef);
-                this._stream.write(index);
-                this._stream.write(Tags.TagSemicolon);
+                this._stream.writeByte(Tags.TagRef);
+                this._stream.writeString('' + index);
+                this._stream.writeByte(Tags.TagSemicolon);
                 return true;
             }
             return false;
@@ -2200,38 +2208,54 @@ hprose.Tags = {
 
     function serialize(writer, value) {
         var stream = writer.stream;
-        if (value === undefined ||
-            value === null ||
-            value.constructor === Function) {
-            stream.write(Tags.TagNull);
-            return;
-        }
-        if (value === '') {
-            stream.write(Tags.TagEmpty);
+        if (value === undefined || value === null) {
+            stream.writeByte(Tags.TagNull);
             return;
         }
         switch (value.constructor) {
+        case Function:
+            stream.writeByte(Tags.TagNull);
+            return;
         case Number:
             writeNumber(writer, value);
-            break;
+            return;
         case Boolean:
             writeBoolean(writer, value);
-            break;
+            return;
         case String:
-            if (value.length === 1) {
-                stream.write(Tags.TagUTF8Char);
-                stream.write(value);
+            switch (value.length) {
+            case 0:
+                stream.writeByte(Tags.TagEmpty);
+                return;
+            case 1:
+                stream.writeByte(Tags.TagUTF8Char);
+                stream.writeString(value);
+                return;
             }
-            else {
-                writer.writeStringWithRef(value);
-            }
-            break;
+            writer.writeStringWithRef(value);
+            return;
         case Date:
             writer.writeDateWithRef(value);
-            break;
+            return;
         case Map:
             writer.writeMapWithRef(value);
-            break;
+            return;
+        case ArrayBuffer:
+        case Uint8Array:
+        case BytesIO:
+            writer.writeBytesWithRef(value);
+            return;
+        case Int8Array:
+        case Int16Array:
+        case Int32Array:
+        case Uint16Array:
+        case Uint32Array:
+            writeIntListWithRef(writer, value);
+            return;
+        case Float32Array:
+        case Float64Array:
+            writeDoubleListWithRef(writer, value);
+            return;
         default:
             if (Array.isArray(value)) {
                 writer.writeListWithRef(value);
@@ -2254,73 +2278,84 @@ hprose.Tags = {
         n = n.valueOf();
         if (n === (n | 0)) {
             if (0 <= n && n <= 9) {
-                stream.write(n);
+                stream.writeByte(n + 0x30);
             }
             else {
-                stream.write(Tags.TagInteger);
-                stream.write(n);
-                stream.write(Tags.TagSemicolon);
+                stream.writeByte(Tags.TagInteger);
+                stream.writeAsciiString('' + n);
+                stream.writeByte(Tags.TagSemicolon);
             }
         }
+        else if (isNaN(n)) {
+            stream.writeByte(Tags.TagNaN);
+        }
+        else if (isFinite(n)) {
+            stream.writeByte(Tags.TagDouble);
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagSemicolon);
+        }
         else {
-            writeDouble(writer, n);
+            stream.writeByte(Tags.TagInfinity);
+            stream.writeByte((n > 0) ? Tags.TagPos : Tags.TagNeg);
         }
     }
 
     function writeInteger(writer, n) {
         var stream = writer.stream;
         if (0 <= n && n <= 9) {
-            stream.write(n);
+            stream.writeByte(n + 0x30);
         }
         else {
             if (n < -2147483648 || n > 2147483647) {
-                stream.write(Tags.TagLong);
+                stream.writeByte(Tags.TagLong);
             }
             else {
-                stream.write(Tags.TagInteger);
+                stream.writeByte(Tags.TagInteger);
             }
-            stream.write(n);
-            stream.write(Tags.TagSemicolon);
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagSemicolon);
         }
     }
 
     function writeDouble(writer, n) {
         var stream = writer.stream;
-        if (n !== n) {
-            stream.write(Tags.TagNaN);
+        if (isNaN(n)) {
+            stream.writeByte(Tags.TagNaN);
         }
-        else if (n !== Infinity && n !== -Infinity) {
-            stream.write(Tags.TagDouble);
-            stream.write(n);
-            stream.write(Tags.TagSemicolon);
+        else if (isFinite(n)) {
+            stream.writeByte(Tags.TagDouble);
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagSemicolon);
         }
         else {
-            stream.write(Tags.TagInfinity);
-            stream.write((n > 0) ? Tags.TagPos : Tags.TagNeg);
+            stream.writeByte(Tags.TagInfinity);
+            stream.writeByte((n > 0) ? Tags.TagPos : Tags.TagNeg);
         }
     }
 
     function writeBoolean(writer, b) {
-        writer.stream.write(b.valueOf() ? Tags.TagTrue : Tags.TagFalse);
+        writer.stream.writeByte(b.valueOf() ? Tags.TagTrue : Tags.TagFalse);
     }
 
     function writeUTCDate(writer, date) {
         writer._refer.set(date);
         var stream = writer.stream;
-        stream.write(Tags.TagDate);
-        stream.write(('0000' + date.getUTCFullYear()).slice(-4));
-        stream.write(('00' + (date.getUTCMonth() + 1)).slice(-2));
-        stream.write(('00' + date.getUTCDate()).slice(-2));
-        stream.write(Tags.TagTime);
-        stream.write(('00' + date.getUTCHours()).slice(-2));
-        stream.write(('00' + date.getUTCMinutes()).slice(-2));
-        stream.write(('00' + date.getUTCSeconds()).slice(-2));
-        var millisecond = date.getUTCMilliseconds();
-        if (millisecond !== 0) {
-            stream.write(Tags.TagPoint);
-            stream.write(('000' + millisecond).slice(-3));
+        var year = ('0000' + date.getUTCFullYear()).slice(-4);
+        var month = ('00' + (date.getUTCMonth() + 1)).slice(-2);
+        var day = ('00' + date.getUTCDate()).slice(-2);
+        var hour = ('00' + date.getUTCHours()).slice(-2);
+        var minute = ('00' + date.getUTCMinutes()).slice(-2);
+        var second = ('00' + date.getUTCSeconds()).slice(-2);
+        var millisecond = ('000' + date.getUTCMilliseconds()).slice(-3);
+        stream.writeByte(Tags.TagDate);
+        stream.writeAsciiString(year + month + day);
+        stream.writeByte(Tags.TagTime);
+        stream.writeAsciiString(hour + minute + second);
+        if (millisecond !== '000') {
+            stream.writeByte(Tags.TagPoint);
+            stream.writeAsciiString(millisecond);
         }
-        stream.write(Tags.TagUTC);
+        stream.writeByte(Tags.TagUTC);
     }
 
     function writeDate(writer, date) {
@@ -2335,36 +2370,28 @@ hprose.Tags = {
         var millisecond = ('000' + date.getMilliseconds()).slice(-3);
         if ((hour === '00') && (minute === '00') &&
             (second === '00') && (millisecond === '000')) {
-            stream.write(Tags.TagDate);
-            stream.write(year);
-            stream.write(month);
-            stream.write(day);
+            stream.writeByte(Tags.TagDate);
+            stream.writeAsciiString(year + month + day);
         }
         else if ((year === '1970') && (month === '01') && (day === '01')) {
-            stream.write(Tags.TagTime);
-            stream.write(hour);
-            stream.write(minute);
-            stream.write(second);
+            stream.writeByte(Tags.TagTime);
+            stream.writeAsciiString(hour + minute + second);
             if (millisecond !== '000') {
-                stream.write(Tags.TagPoint);
-                stream.write(millisecond);
+                stream.writeByte(Tags.TagPoint);
+                stream.writeAsciiString(millisecond);
             }
         }
         else {
-            stream.write(Tags.TagDate);
-            stream.write(year);
-            stream.write(month);
-            stream.write(day);
-            stream.write(Tags.TagTime);
-            stream.write(hour);
-            stream.write(minute);
-            stream.write(second);
+            stream.writeByte(Tags.TagDate);
+            stream.writeAsciiString(year + month + day);
+            stream.writeByte(Tags.TagTime);
+            stream.writeAsciiString(hour + minute + second);
             if (millisecond !== '000') {
-                stream.write(Tags.TagPoint);
-                stream.write(millisecond);
+                stream.writeByte(Tags.TagPoint);
+                stream.writeAsciiString(millisecond);
             }
         }
-        stream.write(Tags.TagSemicolon);
+        stream.writeByte(Tags.TagSemicolon);
     }
 
     function writeTime(writer, time) {
@@ -2374,49 +2401,75 @@ hprose.Tags = {
         var minute = ('00' + time.getMinutes()).slice(-2);
         var second = ('00' + time.getSeconds()).slice(-2);
         var millisecond = ('000' + time.getMilliseconds()).slice(-3);
-        stream.write(Tags.TagTime);
-        stream.write(hour);
-        stream.write(minute);
-        stream.write(second);
+        stream.writeByte(Tags.TagTime);
+        stream.writeAsciiString(hour + minute + second);
         if (millisecond !== '000') {
-            stream.write(Tags.TagPoint);
-            stream.write(millisecond);
+            stream.writeByte(Tags.TagPoint);
+            stream.writeAsciiString(millisecond);
         }
-        stream.write(Tags.TagSemicolon);
+        stream.writeByte(Tags.TagSemicolon);
+    }
+
+    function writeBytes(writer, bytes) {
+        writer._refer.set(bytes);
+        var stream = writer.stream;
+        stream.writeByte(Tags.TagBytes);
+        var n = bytes.byteLength || bytes.length;
+        if (n > 0) {
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagQuote);
+            stream.write(bytes);
+        }
+        else {
+            stream.writeByte(Tags.TagQuote);
+        }
+        stream.writeByte(Tags.TagQuote);
     }
 
     function writeString(writer, str) {
         writer._refer.set(str);
         var stream = writer.stream;
         var n = str.length;
-        stream.write(Tags.TagString);
+        stream.writeByte(Tags.TagString);
         if (n > 0) {
-            stream.write(n);
-            stream.write(Tags.TagQuote);
-            stream.write(str);
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagQuote);
+            stream.writeString(str);
         }
         else {
-            stream.write(Tags.TagQuote);
+            stream.writeByte(Tags.TagQuote);
         }
-        stream.write(Tags.TagQuote);
+        stream.writeByte(Tags.TagQuote);
     }
 
-    function writeList(writer, array) {
+    function writeArray(writer, array, writeElem) {
         writer._refer.set(array);
         var stream = writer.stream;
         var n = array.length;
-        stream.write(Tags.TagList);
+        stream.writeByte(Tags.TagList);
         if (n > 0) {
-            stream.write(n);
-            stream.write(Tags.TagOpenbrace);
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagOpenbrace);
             for (var i = 0; i < n; i++) {
-                serialize(writer, array[i]);
+                writeElem(writer, array[i]);
             }
         }
         else {
-            stream.write(Tags.TagOpenbrace);
+            stream.writeByte(Tags.TagOpenbrace);
         }
-        stream.write(Tags.TagClosebrace);
+        stream.writeByte(Tags.TagClosebrace);
+    }
+
+    function writeIntListWithRef(writer, list) {
+        if (!writer._refer.write(list)) {
+            writeArray(writer, list, writeInteger);
+        }
+    }
+
+    function writeDoubleListWithRef(writer, list) {
+        if (!writer._refer.write(list)) {
+            writeArray(writer, list, writeDouble);
+        }
     }
 
     function writeMap(writer, map) {
@@ -2430,38 +2483,38 @@ hprose.Tags = {
             }
         }
         var n = fields.length;
-        stream.write(Tags.TagMap);
+        stream.writeByte(Tags.TagMap);
         if (n > 0) {
-            stream.write(n);
-            stream.write(Tags.TagOpenbrace);
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagOpenbrace);
             for (var i = 0; i < n; i++) {
                 serialize(writer, fields[i]);
                 serialize(writer, map[fields[i]]);
             }
         }
         else {
-            stream.write(Tags.TagOpenbrace);
+            stream.writeByte(Tags.TagOpenbrace);
         }
-        stream.write(Tags.TagClosebrace);
+        stream.writeByte(Tags.TagClosebrace);
     }
 
     function writeHarmonyMap(writer, map) {
         writer._refer.set(map);
         var stream = writer.stream;
         var n = map.size;
-        stream.write(Tags.TagMap);
+        stream.writeByte(Tags.TagMap);
         if (n > 0) {
-            stream.write(n);
-            stream.write(Tags.TagOpenbrace);
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagOpenbrace);
             map.forEach(function(value, key) {
                 serialize(writer, key);
                 serialize(writer, value);
             });
         }
         else {
-            stream.write(Tags.TagOpenbrace);
+            stream.writeByte(Tags.TagOpenbrace);
         }
-        stream.write(Tags.TagClosebrace);
+        stream.writeByte(Tags.TagClosebrace);
     }
 
     function writeObject(writer, obj) {
@@ -2482,36 +2535,36 @@ hprose.Tags = {
             }
             index = writeClass(writer, classname, fields);
         }
-        stream.write(Tags.TagObject);
-        stream.write(index);
-        stream.write(Tags.TagOpenbrace);
+        stream.writeByte(Tags.TagObject);
+        stream.writeAsciiString('' + index);
+        stream.writeByte(Tags.TagOpenbrace);
         writer._refer.set(obj);
         var n = fields.length;
         for (var i = 0; i < n; i++) {
             serialize(writer, obj[fields[i]]);
         }
-        stream.write(Tags.TagClosebrace);
+        stream.writeByte(Tags.TagClosebrace);
     }
 
     function writeClass(writer, classname, fields) {
         var stream = writer.stream;
         var n = fields.length;
-        stream.write(Tags.TagClass);
-        stream.write(classname.length);
-        stream.write(Tags.TagQuote);
-        stream.write(classname);
-        stream.write(Tags.TagQuote);
+        stream.writeByte(Tags.TagClass);
+        stream.writeAsciiString('' + classname.length);
+        stream.writeByte(Tags.TagQuote);
+        stream.writeString(classname);
+        stream.writeByte(Tags.TagQuote);
         if (n > 0) {
-            stream.write(n);
-            stream.write(Tags.TagOpenbrace);
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagOpenbrace);
             for (var i = 0; i < n; i++) {
                 writeString(writer, fields[i]);
             }
         }
         else {
-            stream.write(Tags.TagOpenbrace);
+            stream.writeByte(Tags.TagOpenbrace);
         }
-        stream.write(Tags.TagClosebrace);
+        stream.writeByte(Tags.TagClosebrace);
         var index = writer._fieldsref.length;
         writer._classref[classname] = index;
         writer._fieldsref[index] = fields;
@@ -2555,6 +2608,14 @@ hprose.Tags = {
                 writeTime(this, value);
             }
         } },
+        writeBytes: { value: function(value) {
+            writeBytes(this, value);
+        } },
+        writeBytesWithRef: { value: function(value) {
+            if (!this._refer.write(value)) {
+                writeBytes(this, value);
+            }
+        } },
         writeString: { value: function(value) {
             writeString(this, value);
         } },
@@ -2564,11 +2625,11 @@ hprose.Tags = {
             }
         } },
         writeList: { value: function(value) {
-            writeList(this, value);
+            writeArray(this, value, serialize);
         } },
         writeListWithRef: { value: function(value) {
             if (!this._refer.write(value)) {
-                writeList(this, value);
+                writeArray(this, value, serialize);
             }
         } },
         writeMap: { value: function(value) {
@@ -2581,7 +2642,12 @@ hprose.Tags = {
         } },
         writeMapWithRef: { value: function(value) {
             if (!this._refer.write(value)) {
-                this.writeMap(value);
+                if (value instanceof Map) {
+                    writeHarmonyMap(this, value);
+                }
+                else {
+                    writeMap(this, value);
+                }
             }
         } },
         writeObject: { value: function(value) {
@@ -2618,51 +2684,60 @@ hprose.Tags = {
  *                                                        *
  * hprose Reader for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
 (function (hprose, undefined) {
     'use strict';
-    var StringIO = hprose.StringIO;
+    var Map = hprose.Map;
+    var BytesIO = hprose.BytesIO;
     var Tags = hprose.Tags;
     var ClassManager = hprose.ClassManager;
-    var Map = hprose.Map;
 
     function unexpectedTag(tag, expectTags) {
         if (tag && expectTags) {
-            throw new Error('Tag "' + expectTags + '" expected, but "' + tag + '" found in stream');
+            var expectTagStr = '';
+            if (typeof(expectTags) === 'number') {
+                expectTagStr = String.fromCharCode(expectTags);
+            }
+            else {
+                expectTagStr = String.fromCharCode.apply(String, expectTags);
+            }
+            throw new Error('Tag "' + expectTagStr + '" expected, but "' + String.fromCharCode(tag) + '" found in stream');
         }
-        if (tag) {
-            throw new Error('Unexpected serialize tag "' + tag + '" in stream');
+        else if (tag) {
+            throw new Error('Unexpected serialize tag "' + String.fromCharCode(tag) + '" in stream');
         }
-        throw new Error('No byte found in stream');
+        else {
+            throw new Error('No byte found in stream');
+        }
     }
 
     function readRaw(stream) {
-        var ostream = new StringIO();
+        var ostream = new BytesIO();
         _readRaw(stream, ostream);
-        return ostream.take();
+        return ostream.bytes;
     }
 
     function _readRaw(stream, ostream) {
-        __readRaw(stream, ostream, stream.readChar());
+        __readRaw(stream, ostream, stream.readByte());
     }
 
     function __readRaw(stream, ostream, tag) {
-        ostream.write(tag);
+        ostream.writeByte(tag);
         switch (tag) {
-            case '0':
-            case '1':
-            case '2':
-            case '3':
-            case '4':
-            case '5':
-            case '6':
-            case '7':
-            case '8':
-            case '9':
+            case 48:
+            case 49:
+            case 50:
+            case 51:
+            case 52:
+            case 53:
+            case 54:
+            case 55:
+            case 56:
+            case 57:
             case Tags.TagNull:
             case Tags.TagEmpty:
             case Tags.TagTrue:
@@ -2670,7 +2745,7 @@ hprose.Tags = {
             case Tags.TagNaN:
                 break;
             case Tags.TagInfinity:
-                ostream.write(stream.read());
+                ostream.writeByte(stream.readByte());
                 break;
             case Tags.TagInteger:
             case Tags.TagLong:
@@ -2684,6 +2759,9 @@ hprose.Tags = {
                 break;
             case Tags.TagUTF8Char:
                 readUTF8CharRaw(stream, ostream);
+                break;
+            case Tags.TagBytes:
+                readBytesRaw(stream, ostream);
                 break;
             case Tags.TagString:
                 readStringRaw(stream, ostream);
@@ -2706,53 +2784,59 @@ hprose.Tags = {
             default: unexpectedTag(tag);
         }
     }
-
     function readNumberRaw(stream, ostream) {
         var tag;
         do {
-            tag = stream.read();
-            ostream.write(tag);
+            tag = stream.readByte();
+            ostream.writeByte(tag);
         } while (tag !== Tags.TagSemicolon);
     }
-
     function readDateTimeRaw(stream, ostream) {
         var tag;
         do {
-            tag = stream.read();
-            ostream.write(tag);
+            tag = stream.readByte();
+            ostream.writeByte(tag);
         } while (tag !== Tags.TagSemicolon &&
                  tag !== Tags.TagUTC);
     }
-
     function readUTF8CharRaw(stream, ostream) {
-        ostream.write(stream.readChar());
+        ostream.writeString(stream.readString(1));
     }
-
-    function readStringRaw(stream, ostream) {
-        var s = stream.readUntil(Tags.TagQuote);
-        ostream.write(s);
-        ostream.write(Tags.TagQuote);
+    function readBytesRaw(stream, ostream) {
         var count = 0;
-        if (s.length > 0) {
-            count = parseInt(s, 10);
-        }
+        var tag = 48;
+        do {
+            count *= 10;
+            count += tag - 48;
+            tag = stream.readByte();
+            ostream.writeByte(tag);
+        } while (tag !== Tags.TagQuote);
         ostream.write(stream.read(count + 1));
     }
-
+    function readStringRaw(stream, ostream) {
+        var count = 0;
+        var tag = 48;
+        do {
+            count *= 10;
+            count += tag - 48;
+            tag = stream.readByte();
+            ostream.writeByte(tag);
+        } while (tag !== Tags.TagQuote);
+        ostream.write(stream.readStringAsBytes(count + 1));
+    }
     function readGuidRaw(stream, ostream) {
         ostream.write(stream.read(38));
     }
-
     function readComplexRaw(stream, ostream) {
         var tag;
         do {
-            tag = stream.readChar();
-            ostream.write(tag);
+            tag = stream.readByte();
+            ostream.writeByte(tag);
         } while (tag !== Tags.TagOpenbrace);
-        while ((tag = stream.readChar()) !== Tags.TagClosebrace) {
+        while ((tag = stream.readByte()) !== Tags.TagClosebrace) {
             __readRaw(stream, ostream, tag);
         }
-        ostream.write(tag);
+        ostream.writeByte(tag);
     }
 
     function RawReader(stream) {
@@ -2790,11 +2874,9 @@ hprose.Tags = {
         var cls = ClassManager.getClass(classname);
         if (cls) { return cls; }
         cls = function () {};
-        Object.defineProperties(cls.prototype, {
-            'getClassName': { value: function () {
-                return classname;
-            } }
-        });
+        Object.defineProperty(cls.prototype, 'getClassName', { value: function () {
+            return classname;
+        }});
         ClassManager.register(cls, classname);
         return cls;
     }
@@ -2804,21 +2886,20 @@ hprose.Tags = {
         if (s.length === 0) { return 0; }
         return parseInt(s, 10);
     }
-
     function unserialize(reader) {
         var stream = reader.stream;
-        var tag = stream.readChar();
+        var tag = stream.readByte();
         switch (tag) {
-            case '0': return 0;
-            case '1': return 1;
-            case '2': return 2;
-            case '3': return 3;
-            case '4': return 4;
-            case '5': return 5;
-            case '6': return 6;
-            case '7': return 7;
-            case '8': return 8;
-            case '9': return 9;
+            case 48:
+            case 49:
+            case 50:
+            case 51:
+            case 52:
+            case 53:
+            case 54:
+            case 55:
+            case 56:
+            case 57: return tag - 48;
             case Tags.TagInteger: return readIntegerWithoutTag(stream);
             case Tags.TagLong: return readLongWithoutTag(stream);
             case Tags.TagDouble: return readDoubleWithoutTag(stream);
@@ -2830,6 +2911,7 @@ hprose.Tags = {
             case Tags.TagInfinity: return readInfinityWithoutTag(stream);
             case Tags.TagDate: return readDateWithoutTag(reader);
             case Tags.TagTime: return readTimeWithoutTag(reader);
+            case Tags.TagBytes: return readBytesWithoutTag(reader);
             case Tags.TagUTF8Char: return readUTF8CharWithoutTag(reader);
             case Tags.TagString: return readStringWithoutTag(reader);
             case Tags.TagGuid: return readGuidWithoutTag(reader);
@@ -2846,18 +2928,18 @@ hprose.Tags = {
         return readInt(stream, Tags.TagSemicolon);
     }
     function readInteger(stream) {
-        var tag = stream.readChar();
+        var tag = stream.readByte();
         switch (tag) {
-            case '0': return 0;
-            case '1': return 1;
-            case '2': return 2;
-            case '3': return 3;
-            case '4': return 4;
-            case '5': return 5;
-            case '6': return 6;
-            case '7': return 7;
-            case '8': return 8;
-            case '9': return 9;
+            case 48:
+            case 49:
+            case 50:
+            case 51:
+            case 52:
+            case 53:
+            case 54:
+            case 55:
+            case 56:
+            case 57: return tag - 48;
             case Tags.TagInteger: return readIntegerWithoutTag(stream);
             default: unexpectedTag(tag);
         }
@@ -2869,18 +2951,18 @@ hprose.Tags = {
         return s;
     }
     function readLong(stream) {
-        var tag = stream.readChar();
+        var tag = stream.readByte();
         switch (tag) {
-            case '0': return 0;
-            case '1': return 1;
-            case '2': return 2;
-            case '3': return 3;
-            case '4': return 4;
-            case '5': return 5;
-            case '6': return 6;
-            case '7': return 7;
-            case '8': return 8;
-            case '9': return 9;
+            case 48:
+            case 49:
+            case 50:
+            case 51:
+            case 52:
+            case 53:
+            case 54:
+            case 55:
+            case 56:
+            case 57: return tag - 48;
             case Tags.TagInteger:
             case Tags.TagLong: return readLongWithoutTag(stream);
             default: unexpectedTag(tag);
@@ -2890,18 +2972,18 @@ hprose.Tags = {
         return parseFloat(stream.readUntil(Tags.TagSemicolon));
     }
     function readDouble(stream) {
-        var tag = stream.readChar();
+        var tag = stream.readByte();
         switch (tag) {
-            case '0': return 0;
-            case '1': return 1;
-            case '2': return 2;
-            case '3': return 3;
-            case '4': return 4;
-            case '5': return 5;
-            case '6': return 6;
-            case '7': return 7;
-            case '8': return 8;
-            case '9': return 9;
+            case 48:
+            case 49:
+            case 50:
+            case 51:
+            case 52:
+            case 53:
+            case 54:
+            case 55:
+            case 56:
+            case 57: return tag - 48;
             case Tags.TagInteger:
             case Tags.TagLong:
             case Tags.TagDouble: return readDoubleWithoutTag(stream);
@@ -2911,10 +2993,10 @@ hprose.Tags = {
         }
     }
     function readInfinityWithoutTag(stream) {
-        return ((stream.readChar() === Tags.TagNeg) ? -Infinity : Infinity);
+        return ((stream.readByte() === Tags.TagNeg) ? -Infinity : Infinity);
     }
     function readBoolean(stream) {
-        var tag = stream.readChar();
+        var tag = stream.readByte();
         switch (tag) {
             case Tags.TagTrue: return true;
             case Tags.TagFalse: return false;
@@ -2923,26 +3005,26 @@ hprose.Tags = {
     }
     function readDateWithoutTag(reader) {
         var stream = reader.stream;
-        var year = parseInt(stream.read(4), 10);
-        var month = parseInt(stream.read(2), 10) - 1;
-        var day = parseInt(stream.read(2), 10);
+        var year = parseInt(stream.readAsciiString(4), 10);
+        var month = parseInt(stream.readAsciiString(2), 10) - 1;
+        var day = parseInt(stream.readAsciiString(2), 10);
         var date;
-        var tag = stream.readChar();
+        var tag = stream.readByte();
         if (tag === Tags.TagTime) {
-            var hour = parseInt(stream.read(2), 10);
-            var minute = parseInt(stream.read(2), 10);
-            var second = parseInt(stream.read(2), 10);
+            var hour = parseInt(stream.readAsciiString(2), 10);
+            var minute = parseInt(stream.readAsciiString(2), 10);
+            var second = parseInt(stream.readAsciiString(2), 10);
             var millisecond = 0;
-            tag = stream.readChar();
+            tag = stream.readByte();
             if (tag === Tags.TagPoint) {
-                millisecond = parseInt(stream.read(3), 10);
-                tag = stream.readChar();
-                if ((tag >= '0') && (tag <= '9')) {
+                millisecond = parseInt(stream.readAsciiString(3), 10);
+                tag = stream.readByte();
+                if ((tag >= 48) && (tag <= 57)) {
                     stream.skip(2);
-                    tag = stream.readChar();
-                    if ((tag >= '0') && (tag <= '9')) {
+                    tag = stream.readByte();
+                    if ((tag >= 48) && (tag <= 57)) {
                         stream.skip(2);
-                        tag = stream.readChar();
+                        tag = stream.readByte();
                     }
                 }
             }
@@ -2963,7 +3045,7 @@ hprose.Tags = {
         return date;
     }
     function readDate(reader) {
-        var tag = reader.stream.readChar();
+        var tag = reader.stream.readByte();
         switch (tag) {
             case Tags.TagNull: return null;
             case Tags.TagDate: return readDateWithoutTag(reader);
@@ -2974,20 +3056,20 @@ hprose.Tags = {
     function readTimeWithoutTag(reader) {
         var stream = reader.stream;
         var time;
-        var hour = parseInt(stream.read(2), 10);
-        var minute = parseInt(stream.read(2), 10);
-        var second = parseInt(stream.read(2), 10);
+        var hour = parseInt(stream.readAsciiString(2), 10);
+        var minute = parseInt(stream.readAsciiString(2), 10);
+        var second = parseInt(stream.readAsciiString(2), 10);
         var millisecond = 0;
-        var tag = stream.readChar();
+        var tag = stream.readByte();
         if (tag === Tags.TagPoint) {
-            millisecond = parseInt(stream.read(3), 10);
-            tag = stream.readChar();
-            if ((tag >= '0') && (tag <= '9')) {
+            millisecond = parseInt(stream.readAsciiString(3), 10);
+            tag = stream.readByte();
+            if ((tag >= 48) && (tag <= 57)) {
                 stream.skip(2);
-                tag = stream.readChar();
-                if ((tag >= '0') && (tag <= '9')) {
+                tag = stream.readByte();
+                if ((tag >= 48) && (tag <= 57)) {
                     stream.skip(2);
-                    tag = stream.readChar();
+                    tag = stream.readByte();
                 }
             }
         }
@@ -3001,7 +3083,7 @@ hprose.Tags = {
         return time;
     }
     function readTime(reader) {
-        var tag = reader.stream.readChar();
+        var tag = reader.stream.readByte();
         switch (tag) {
             case Tags.TagNull: return null;
             case Tags.TagTime: return readTimeWithoutTag(reader);
@@ -3009,13 +3091,30 @@ hprose.Tags = {
             default: unexpectedTag(tag);
         }
     }
+    function readBytesWithoutTag(reader) {
+        var stream = reader.stream;
+        var count = readInt(stream, Tags.TagQuote);
+        var bytes = stream.read(count);
+        stream.skip(1);
+        reader.refer.set(bytes);
+        return bytes;
+    }
+    function readBytes(reader) {
+        var tag = reader.stream.readByte();
+        switch (tag) {
+            case Tags.TagNull: return null;
+            case Tags.TagEmpty: return new Uint8Array(0);
+            case Tags.TagBytes: return readBytesWithoutTag(reader);
+            case Tags.TagRef: return readRef(reader);
+            default: unexpectedTag(tag);
+        }
+    }
     function readUTF8CharWithoutTag(reader) {
-        return reader.stream.read(1);
+        return reader.stream.readString(1);
     }
     function _readString(reader) {
         var stream = reader.stream;
-        var count = readInt(stream, Tags.TagQuote);
-        var s = stream.read(count);
+        var s = stream.readString(readInt(stream, Tags.TagQuote));
         stream.skip(1);
         return s;
     }
@@ -3025,7 +3124,7 @@ hprose.Tags = {
         return s;
     }
     function readString(reader) {
-        var tag = reader.stream.readChar();
+        var tag = reader.stream.readByte();
         switch (tag) {
             case Tags.TagNull: return null;
             case Tags.TagEmpty: return '';
@@ -3038,13 +3137,13 @@ hprose.Tags = {
     function readGuidWithoutTag(reader) {
         var stream = reader.stream;
         stream.skip(1);
-        var s = stream.read(36);
+        var s = stream.readAsciiString(36);
         stream.skip(1);
         reader.refer.set(s);
         return s;
     }
     function readGuid(reader) {
-        var tag = reader.stream.readChar();
+        var tag = reader.stream.readByte();
         switch (tag) {
             case Tags.TagNull: return null;
             case Tags.TagGuid: return readGuidWithoutTag(reader);
@@ -3064,7 +3163,7 @@ hprose.Tags = {
         return list;
     }
     function readList(reader) {
-        var tag = reader.stream.readChar();
+        var tag = reader.stream.readByte();
         switch (tag) {
             case Tags.TagNull: return null;
             case Tags.TagList: return readListWithoutTag(reader);
@@ -3086,7 +3185,7 @@ hprose.Tags = {
         return map;
     }
     function readMap(reader) {
-        var tag = reader.stream.readChar();
+        var tag = reader.stream.readByte();
         switch (tag) {
             case Tags.TagNull: return null;
             case Tags.TagMap: return readMapWithoutTag(reader);
@@ -3108,7 +3207,7 @@ hprose.Tags = {
         return map;
     }
     function readHarmonyMap(reader) {
-        var tag = reader.stream.readChar();
+        var tag = reader.stream.readByte();
         switch (tag) {
             case Tags.TagNull: return null;
             case Tags.TagMap: return readHarmonyMapWithoutTag(reader);
@@ -3128,7 +3227,7 @@ hprose.Tags = {
         return obj;
     }
     function readObject(reader) {
-        var tag = reader.stream.readChar();
+        var tag = reader.stream.readByte();
         switch(tag) {
             case Tags.TagNull: return null;
             case Tags.TagClass: readClass(reader); return readObject(reader);
@@ -3172,11 +3271,11 @@ hprose.Tags = {
     Object.defineProperties(Reader.prototype, {
         useHarmonyMap: { value: false, writable: true },
         checkTag: { value: function(expectTag, tag) {
-            if (tag === undefined) { tag = this.stream.readChar(); }
+            if (tag === undefined) { tag = this.stream.readByte(); }
             if (tag !== expectTag) { unexpectedTag(tag, expectTag); }
         } },
         checkTags: { value: function(expectTags, tag) {
-            if (tag === undefined) { tag = this.stream.readChar(); }
+            if (tag === undefined) { tag = this.stream.readByte(); }
             if (expectTags.indexOf(tag) >= 0) { return tag; }
             unexpectedTag(tag, expectTags);
         } },
@@ -3206,6 +3305,12 @@ hprose.Tags = {
         } },
         readTime: { value: function() {
             return readTime(this);
+        } },
+        readBytesWithoutTag: { value: function() {
+            return readBytesWithoutTag(this);
+        } },
+        readBytes: { value: function() {
+            return readBytes(this);
         } },
         readStringWithoutTag: { value: function() {
             return readStringWithoutTag(this);
@@ -3265,35 +3370,37 @@ hprose.Tags = {
  *                                                        *
  * hprose Formatter for WeChat App.                       *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
 (function (hprose) {
     'use strict';
-    var StringIO = hprose.StringIO;
+    var BytesIO = hprose.BytesIO;
     var Writer = hprose.Writer;
     var Reader = hprose.Reader;
 
     function serialize(value, simple) {
-        var stream = new StringIO();
+        var stream = new BytesIO();
         var writer = new Writer(stream, simple);
         writer.serialize(value);
-        return stream.take();
+        return stream;
     }
 
     function unserialize(stream, simple, useHarmonyMap) {
-        if (!(stream instanceof StringIO)) {
-            stream = new StringIO(stream);
+        if (!(stream instanceof BytesIO)) {
+            stream = new BytesIO(stream);
         }
         return new Reader(stream, simple, useHarmonyMap).unserialize();
     }
 
-    hprose.Formatter = Object.create(null, {
-        serialize: { value: serialize },
-        unserialize: { value: unserialize }
-    });
+    hprose.Formatter = {
+        serialize: function (value, simple) {
+            return serialize(value, simple).bytes;
+        },
+        unserialize: unserialize
+    };
 
     hprose.serialize = serialize;
     hprose.unserialize = unserialize;
@@ -3345,7 +3452,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
  *                                                        *
  * hprose client for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -3355,14 +3462,15 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
     var setImmediate = hprose.setImmediate;
     var Tags = hprose.Tags;
     var ResultMode = hprose.ResultMode;
-    var StringIO = hprose.StringIO;
+    var BytesIO = hprose.BytesIO;
     var Writer = hprose.Writer;
     var Reader = hprose.Reader;
     var Future = hprose.Future;
     var parseuri = hprose.parseuri;
     var isObjectEmpty = hprose.isObjectEmpty;
 
-    var GETFUNCTIONS = Tags.TagEnd;
+    var GETFUNCTIONS = new Uint8Array(1);
+    GETFUNCTIONS[0] = Tags.TagEnd;
 
     function noop(){}
 
@@ -3388,6 +3496,8 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
             _lock                   = false,
             _tasks                  = [],
             _useHarmonyMap          = false,
+            _onerror                = noop,
+            _onfailswitch           = noop,
             _filters                = [],
             _batch                  = false,
             _batches                = [],
@@ -3457,9 +3567,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
             else {
                 _failround++;
             }
-            if (typeof self.onfailswitch === s_function) {
-                self.onfailswitch(self);
-            }
+            _onfailswitch(self);
         }
 
         function retry(data, context) {
@@ -3499,9 +3607,9 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
             var onsuccess = function(data) {
                 var error = null;
                 try {
-                    var stream = new StringIO(data);
+                    var stream = new BytesIO(data);
                     var reader = new Reader(stream, true);
-                    var tag = stream.readChar();
+                    var tag = stream.readByte();
                     switch (tag) {
                         case Tags.TagError:
                             error = new Error(reader.readString());
@@ -3512,7 +3620,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
                             setFunctions(stub, functions);
                             break;
                         default:
-                            error = new Error('Wrong Response:\r\n' + data);
+                            error = new Error('Wrong Response:\r\n' + BytesIO.toString(data));
                             break;
                     }
                 }
@@ -3656,8 +3764,8 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
         }
 
         function encode(name, args, context) {
-            var stream = new StringIO();
-            stream.write(Tags.TagCall);
+            var stream = new BytesIO();
+            stream.writeByte(Tags.TagCall);
             var writer = new Writer(stream, context.simple);
             writer.writeString(name);
             if (args.length > 0 || context.byref) {
@@ -3698,8 +3806,8 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
                 if (context.onerror) {
                     context.onerror(name, error);
                 }
-                else if (self.onerror) {
-                    self.onerror(name, error);
+                else {
+                    _onerror(name, error);
                 }
                 reject(error);
             }
@@ -3710,9 +3818,9 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
 
         function invokeHandler(name, args, context) {
             var request = encode(name, args, context);
-            request.write(Tags.TagEnd);
+            request.writeByte(Tags.TagEnd);
             return Future.promise(function(resolve, reject) {
-                sendAndReceive(request.toString(), context, function(response) {
+                sendAndReceive(request.bytes, context, function(response) {
                     if (context.oneway) {
                         resolve();
                         return;
@@ -3724,12 +3832,12 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
                             result = response;
                         }
                         else if (context.mode === ResultMode.Raw) {
-                            result = response.substring(0, response.length - 1);
+                            result = response.subarray(0, response.byteLength - 1);
                         }
                         else {
-                            var stream = new StringIO(response);
+                            var stream = new BytesIO(response);
                             var reader = new Reader(stream, false, context.useHarmonyMap);
-                            var tag = stream.readChar();
+                            var tag = stream.readByte();
                             if (tag === Tags.TagResult) {
                                 if (context.mode === ResultMode.Serialized) {
                                     result = reader.readRaw();
@@ -3737,20 +3845,20 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
                                 else {
                                     result = reader.unserialize();
                                 }
-                                tag = stream.readChar();
+                                tag = stream.readByte();
                                 if (tag === Tags.TagArgument) {
                                     reader.reset();
                                     var _args = reader.readList();
                                     copyargs(_args, args);
-                                    tag = stream.readChar();
+                                    tag = stream.readByte();
                                 }
                             }
                             else if (tag === Tags.TagError) {
                                 error = new Error(reader.readString());
-                                tag = stream.readChar();
+                                tag = stream.readByte();
                             }
                             if (tag !== Tags.TagEnd) {
-                                error = new Error('Wrong Response:\r\n' + response);
+                                error = new Error('Wrong Response:\r\n' + BytesIO.toString(response));
                             }
                         }
                     }
@@ -3852,32 +3960,32 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
             var request = batches.reduce(function(stream, item) {
                 stream.write(encode(item.name, item.args, item.context));
                 return stream;
-            }, new StringIO());
-            request.write(Tags.TagEnd);
+            }, new BytesIO());
+            request.writeByte(Tags.TagEnd);
             return Future.promise(function(resolve, reject) {
-                sendAndReceive(request.toString(), context, function(response) {
+                sendAndReceive(request.bytes, context, function(response) {
                     if (context.oneway) {
                         resolve(batches);
                         return;
                     }
                     var i = -1;
-                    var stream = new StringIO(response);
-                    var reader = new Reader(stream, false, false);
-                    var tag = stream.readChar();
+                    var stream = new BytesIO(response);
+                    var reader = new Reader(stream, false);
+                    var tag = stream.readByte();
                     try {
                         while (tag !== Tags.TagEnd) {
                             var result = null;
                             var error = null;
                             var mode = batches[++i].context.mode;
                             if (mode >= ResultMode.Raw) {
-                                result = new StringIO();
+                                result = new BytesIO();
                             }
                             if (tag === Tags.TagResult) {
                                 if (mode === ResultMode.Serialized) {
                                     result = reader.readRaw();
                                 }
                                 else if (mode >= ResultMode.Raw) {
-                                    result.write(Tags.TagResult);
+                                    result.writeByte(Tags.TagResult);
                                     result.write(reader.readRaw());
                                 }
                                 else {
@@ -3885,10 +3993,10 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
                                     reader.reset();
                                     result = reader.unserialize();
                                 }
-                                tag = stream.readChar();
+                                tag = stream.readByte();
                                 if (tag === Tags.TagArgument) {
                                     if (mode >= ResultMode.Raw) {
-                                        result.write(Tags.TagArgument);
+                                        result.writeByte(Tags.TagArgument);
                                         result.write(reader.readRaw());
                                     }
                                     else {
@@ -3896,31 +4004,31 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
                                         var _args = reader.readList();
                                         copyargs(_args, batches[i].args);
                                     }
-                                    tag = stream.readChar();
+                                    tag = stream.readByte();
                                 }
                             }
                             else if (tag === Tags.TagError) {
                                 if (mode >= ResultMode.Raw) {
-                                    result.write(Tags.TagError);
+                                    result.writeByte(Tags.TagError);
                                     result.write(reader.readRaw());
                                 }
                                 else {
                                     reader.reset();
                                     error = new Error(reader.readString());
                                 }
-                                tag = stream.readChar();
+                                tag = stream.readByte();
                             }
                             if ([Tags.TagEnd,
                                  Tags.TagResult,
                                  Tags.TagError].indexOf(tag) < 0) {
-                                reject(new Error('Wrong Response:\r\n' + response));
+                                reject(new Error('Wrong Response:\r\n' + BytesIO.toString(response)));
                                 return;
                             }
                             if (mode >= ResultMode.Raw) {
                                 if (mode === ResultMode.RawWithEndTag) {
-                                    result.write(Tags.TagEnd);
+                                    result.writeByte(Tags.TagEnd);
                                 }
-                                batches[i].result = result.toString();
+                                batches[i].result = result.bytes;
                             }
                             else {
                                 batches[i].result = result;
@@ -4003,6 +4111,22 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
             return promise;
         }
 
+        function getOnError() {
+            return _onerror;
+        }
+        function setOnError(value) {
+            if (typeof(value) === s_function) {
+                _onerror = value;
+            }
+        }
+        function getOnFailswitch() {
+            return _onfailswitch;
+        }
+        function setOnFailswitch(value) {
+            if (typeof(value) === s_function) {
+                _onfailswitch = value;
+            }
+        }
         function getUri() {
             return _uri;
         }
@@ -4035,7 +4159,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
         function getTimeout() {
             return _timeout;
         }
-        function _setTimeout(value) {
+        function setTimeout(value) {
             if (typeof(value) === 'number') {
                 _timeout = value | 0;
             }
@@ -4430,14 +4554,14 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
         });
         Object.defineProperties(this, {
             '#': { value: autoId },
-            onerror: { value: null, writable: true },
-            onfailswitch: { value: null, writable: true },
+            onerror: { get: getOnError, set: setOnError },
+            onfailswitch: { get: getOnFailswitch, set: setOnFailswitch },
             uri: { get: getUri },
             uriList: { get: getUriList, set: setUriList },
             id: { get: getId },
             failswitch: { get: getFailswitch, set: setFailswitch },
             failround: { get: getFailround },
-            timeout: { get: getTimeout, set: _setTimeout },
+            timeout: { get: getTimeout, set: setTimeout },
             retry: { get: getRetry, set: setRetry },
             idempotent: { get: getIdempotent, set: setIdempotent },
             keepAlive: { get: getKeepAlive, set: setKeepAlive },
@@ -4466,7 +4590,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
                  'keepAlive', 'byref', 'simple','useHarmonyMap',
                  'filter'].forEach(function(key) {
                      if (key in settings) {
-                         self[key](settings[key]);
+                         self[key] = settings[key];
                      }
                 });
             }
@@ -4480,7 +4604,10 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
     function checkuri(uri) {
         var parser = parseuri(uri);
         var protocol = parser.protocol;
-        if (protocol === 'http:' || protocol === 'https:') {
+        if (protocol === 'http:' ||
+            protocol === 'https:' ||
+            protocol === 'ws:' ||
+            protocol === 'wss:') {
             return;
         }
         throw new Error('The ' + protocol + ' client isn\'t implemented.');
@@ -4489,6 +4616,10 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
     function create(uri, functions, settings) {
         try {
             return hprose.HttpClient.create(uri, functions, settings);
+        }
+        catch(e) {}
+        try {
+            return hprose.WebSocketClient.create(uri, functions, settings);
         }
         catch(e) {}
         if (typeof uri === 'string') {
@@ -4501,9 +4632,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
         throw new Error('You should set server uri first!');
     }
 
-    Object.defineProperties(Client, {
-        create: { value: create }
-    });
+    Object.defineProperty(Client, 'create', { value: create });
 
     hprose.Client = Client;
 
@@ -4523,7 +4652,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
  *                                                        *
  * hprose http client for WeChat App.                     *
  *                                                        *
- * LastModified: Nov 17, 2016                             *
+ * LastModified: Nov 18, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -4534,6 +4663,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
     var Client = hprose.Client;
     var Future = hprose.Future;
     var parseuri = hprose.parseuri;
+    var BytesIO = hprose.BytesIO;
 
     function HttpClient(uri, functions, settings) {
         if (this.constructor !== HttpClient) {
@@ -4554,12 +4684,15 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
             wx.request({
                 url: self.uri,
                 method: 'POST',
-                data: request,
+                data: BytesIO.toString(request),
                 header: header,
                 timeout: env.timeout,
                 complete: function(ret) {
-                    if (parseInt(ret.statusCode, 10) === 200) {
-                        future.resolve(ret.data);
+                    if (typeof ret.statusCode === "undefined") {
+                        future.reject(new Error(ret.errMsg));
+                    }
+                    else if (parseInt(ret.statusCode, 10) === 200) {
+                        future.resolve(new BytesIO(ret.data).takeBytes());
                     }
                     else {
                         future.reject(new Error(ret.statusCode + ":" + ret.data));
@@ -4628,6 +4761,199 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
 |                   http://www.hprose.org/                 |
 |                                                          |
 \**********************************************************/
+/**********************************************************\
+ *                                                        *
+ * WebSocketClient.js                                     *
+ *                                                        *
+ * hprose websocket client for WeChat App.                *
+ *                                                        *
+ * LastModified: Nov 17, 2016                             *
+ * Author: Ma Bingyao <andot@hprose.com>                  *
+ *                                                        *
+\**********************************************************/
+
+/* global wx */
+(function (hprose, undefined) {
+    'use strict';
+
+    var BytesIO = hprose.BytesIO;
+    var Client = hprose.Client;
+    var Future = hprose.Future;
+    var parseuri = hprose.parseuri;
+
+    var OPENING = 1;
+    var OPENED  = 2;
+    var CLOSING = 3;
+    var CLOSED  = 4;
+
+    function noop(){}
+    function WebSocketClient(uri, functions, settings) {
+        if (this.constructor !== WebSocketClient) {
+            return new WebSocketClient(uri, functions, settings);
+        }
+
+        Client.call(this, uri, functions, settings);
+
+        var _id = 0;
+        var _count = 0;
+        var _futures = [];
+        var _requests = [];
+        var _ready = null;
+        var ws = CLOSED;
+
+        var self = this;
+
+        function getNextId() {
+            return (_id < 0x7fffffff) ? ++_id : _id = 0;
+        }
+        function send(id, request) {
+            var bytes = new BytesIO();
+            bytes.writeInt32BE(id);
+            if (request.constructor === String) {
+                bytes.writeString(request);
+            }
+            else {
+                bytes.write(request);
+            }
+            var message = bytes.bytes;
+            wx.sendSocketMessage({
+                data: message.buffer.slice(0, message.length)
+            });
+        }
+        function onopen() {
+            ws = OPENED;
+            _ready.resolve();
+        }
+        function onmessage(e) {
+            var bytes = new BytesIO(e.data);
+            var id = bytes.readInt32BE();
+            var future = _futures[id];
+            delete _futures[id];
+            if (future !== undefined) {
+                --_count;
+                future.resolve(bytes.read(bytes.length - 4));
+            }
+            if ((_count < 100) && (_requests.length > 0)) {
+                ++_count;
+                var request = _requests.pop();
+                _ready.then(function() { send(request[0], request[1]); });
+            }
+            if (_count === 0 && !self.keepAlive) {
+                close();
+            }
+        }
+        function onerror(e) {
+            if (!e || e.message === "") {
+                return;
+            }
+            ws = CLOSING;
+            _futures.forEach(function(future, id) {
+                future.reject(new Error("websocket can't open"));
+                delete _futures[id];
+            });
+            _count = 0;
+            ws = CLOSED;
+        }
+        function onclose() {
+            ws = CLOSING;
+            _futures.forEach(function(future, id) {
+                future.reject(new Error("websocket closed"));
+                delete _futures[id];
+            });
+            _count = 0;
+            ws = CLOSED;
+        }
+        function connect() {
+            ws = OPENING;
+            wx.connectSocket({url: self.uri});
+            wx.onSocketOpen(onopen);
+            wx.onSocketMessage(onmessage);
+            wx.onSocketError(onerror);
+            wx.onSocketClose(onclose);
+        }
+        function sendAndReceive(request, env) {
+            if (ws === CLOSING || ws === CLOSED) {
+                _ready = new Future();
+            }
+            var id = getNextId();
+            var future = new Future();
+            _futures[id] = future;
+            if (env.timeout > 0) {
+                future = future.timeout(env.timeout).catchError(function(e) {
+                    delete _futures[id];
+                    --_count;
+                    throw e;
+                },
+                function(e) {
+                    return e instanceof TimeoutError;
+                });
+            }
+            if (_count < 100) {
+                ++_count;
+                _ready.then(function() { send(id, request); });
+            }
+            else {
+                _requests.push([id, request]);
+            }
+            if (ws === CLOSING || ws === CLOSED) {
+                connect();
+            }
+            if (env.oneway) { future.resolve(); }
+            return future;
+        }
+        function close() {
+            if (ws !== CLOSING && ws !== CLOSED) {
+                ws = CLOSING;
+                wx.onSocketOpen(noop);
+                wx.onSocketMessage(noop);
+                wx.onSocketError(noop);
+                wx.onSocketClose(noop);
+                wx.closeSocket();
+            }
+        }
+
+        Object.defineProperties(this, {
+            sendAndReceive: { value: sendAndReceive },
+            close: { value: close }
+        });
+    }
+
+    function checkuri(uri) {
+        var parser = parseuri(uri);
+        if (parser.protocol === 'ws:' ||
+            parser.protocol === 'wss:') {
+            return;
+        }
+        throw new Error('This client desn\'t support ' + parser.protocol + ' scheme.');
+    }
+
+    function create(uri, functions, settings) {
+        if (typeof uri === 'string') {
+            checkuri(uri);
+        }
+        else if (Array.isArray(uri)) {
+            uri.forEach(function(uri) { checkuri(uri); });
+        }
+        else {
+            throw new Error('You should set server uri first!');
+        }
+        return new WebSocketClient(uri, functions, settings);
+    }
+
+    Object.defineProperty(WebSocketClient, 'create', { value: create });
+
+    hprose.WebSocketClient = WebSocketClient;
+
+})(hprose);
+
+/**********************************************************\
+|                                                          |
+|                          hprose                          |
+|                                                          |
+| Official WebSite: http://www.hprose.com/                 |
+|                   http://www.hprose.org/                 |
+|                                                          |
+\**********************************************************/
 
 /**********************************************************\
  *                                                        *
@@ -4644,7 +4970,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
 (function (hprose) {
     'use strict';
     var Tags = hprose.Tags;
-    var StringIO = hprose.StringIO;
+    var BytesIO = hprose.BytesIO;
     var Writer = hprose.Writer;
     var Reader = hprose.Reader;
 
@@ -4655,43 +4981,44 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
     }
 
     JSONRPCClientFilter.prototype.inputFilter = function inputFilter(data/*, context*/) {
-        if (data.charAt(0) === '{') {
-            data = '[' + data + ']';
+        var json = BytesIO.toString(data);
+        if (json.charAt(0) === '{') {
+            json = '[' + json + ']';
         }
-        var responses = JSON.parse(data);
-        var stream = new StringIO();
+        var responses = JSON.parse(json);
+        var stream = new BytesIO();
         var writer = new Writer(stream, true);
         for (var i = 0, n = responses.length; i < n; ++i) {
             var response = responses[i];
             if (response.error) {
-                stream.write(Tags.TagError);
+                stream.writeByte(Tags.TagError);
                 writer.writeString(response.error.message);
             }
             else {
-                stream.write(Tags.TagResult);
+                stream.writeByte(Tags.TagResult);
                 writer.serialize(response.result);
             }
         }
-        stream.write(Tags.TagEnd);
-        return stream.take();
+        stream.writeByte(Tags.TagEnd);
+        return stream.bytes;
     };
 
     JSONRPCClientFilter.prototype.outputFilter = function outputFilter(data/*, context*/) {
         var requests = [];
-        var stream = new StringIO(data);
+        var stream = new BytesIO(data);
         var reader = new Reader(stream, false, false);
-        var tag = stream.readChar();
+        var tag = stream.readByte();
         do {
             var request = {};
             if (tag === Tags.TagCall) {
                 request.method = reader.readString();
-                tag = stream.readChar();
+                tag = stream.readByte();
                 if (tag === Tags.TagList) {
                     request.params = reader.readListWithoutTag();
-                    tag = stream.readChar();
+                    tag = stream.readByte();
                 }
                 if (tag === Tags.TagTrue) {
-                    tag = stream.readChar();
+                    tag = stream.readByte();
                 }
             }
             if (this.version === '1.1') {
@@ -4752,7 +5079,6 @@ hprose.io = {
 hprose.client = {
     Client: hprose.Client,
     HttpClient: hprose.HttpClient,
-    TcpClient: hprose.TcpClient,
     WebSocketClient: hprose.WebSocketClient
 };
 

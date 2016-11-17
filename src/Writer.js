@@ -13,16 +13,17 @@
  *                                                        *
  * hprose Writer for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
 (function (hprose, undefined) {
     'use strict';
+    var Map = hprose.Map;
+    var BytesIO = hprose.BytesIO;
     var Tags = hprose.Tags;
     var ClassManager = hprose.ClassManager;
-    var Map = hprose.Map;
 
     function getClassName(obj) {
         var cls = obj.constructor;
@@ -65,9 +66,9 @@
         write: { value: function (val) {
             var index = this._ref.get(val);
             if (index !== undefined) {
-                this._stream.write(Tags.TagRef);
-                this._stream.write(index);
-                this._stream.write(Tags.TagSemicolon);
+                this._stream.writeByte(Tags.TagRef);
+                this._stream.writeString('' + index);
+                this._stream.writeByte(Tags.TagSemicolon);
                 return true;
             }
             return false;
@@ -93,38 +94,54 @@
 
     function serialize(writer, value) {
         var stream = writer.stream;
-        if (value === undefined ||
-            value === null ||
-            value.constructor === Function) {
-            stream.write(Tags.TagNull);
-            return;
-        }
-        if (value === '') {
-            stream.write(Tags.TagEmpty);
+        if (value === undefined || value === null) {
+            stream.writeByte(Tags.TagNull);
             return;
         }
         switch (value.constructor) {
+        case Function:
+            stream.writeByte(Tags.TagNull);
+            return;
         case Number:
             writeNumber(writer, value);
-            break;
+            return;
         case Boolean:
             writeBoolean(writer, value);
-            break;
+            return;
         case String:
-            if (value.length === 1) {
-                stream.write(Tags.TagUTF8Char);
-                stream.write(value);
+            switch (value.length) {
+            case 0:
+                stream.writeByte(Tags.TagEmpty);
+                return;
+            case 1:
+                stream.writeByte(Tags.TagUTF8Char);
+                stream.writeString(value);
+                return;
             }
-            else {
-                writer.writeStringWithRef(value);
-            }
-            break;
+            writer.writeStringWithRef(value);
+            return;
         case Date:
             writer.writeDateWithRef(value);
-            break;
+            return;
         case Map:
             writer.writeMapWithRef(value);
-            break;
+            return;
+        case ArrayBuffer:
+        case Uint8Array:
+        case BytesIO:
+            writer.writeBytesWithRef(value);
+            return;
+        case Int8Array:
+        case Int16Array:
+        case Int32Array:
+        case Uint16Array:
+        case Uint32Array:
+            writeIntListWithRef(writer, value);
+            return;
+        case Float32Array:
+        case Float64Array:
+            writeDoubleListWithRef(writer, value);
+            return;
         default:
             if (Array.isArray(value)) {
                 writer.writeListWithRef(value);
@@ -147,73 +164,84 @@
         n = n.valueOf();
         if (n === (n | 0)) {
             if (0 <= n && n <= 9) {
-                stream.write(n);
+                stream.writeByte(n + 0x30);
             }
             else {
-                stream.write(Tags.TagInteger);
-                stream.write(n);
-                stream.write(Tags.TagSemicolon);
+                stream.writeByte(Tags.TagInteger);
+                stream.writeAsciiString('' + n);
+                stream.writeByte(Tags.TagSemicolon);
             }
         }
+        else if (isNaN(n)) {
+            stream.writeByte(Tags.TagNaN);
+        }
+        else if (isFinite(n)) {
+            stream.writeByte(Tags.TagDouble);
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagSemicolon);
+        }
         else {
-            writeDouble(writer, n);
+            stream.writeByte(Tags.TagInfinity);
+            stream.writeByte((n > 0) ? Tags.TagPos : Tags.TagNeg);
         }
     }
 
     function writeInteger(writer, n) {
         var stream = writer.stream;
         if (0 <= n && n <= 9) {
-            stream.write(n);
+            stream.writeByte(n + 0x30);
         }
         else {
             if (n < -2147483648 || n > 2147483647) {
-                stream.write(Tags.TagLong);
+                stream.writeByte(Tags.TagLong);
             }
             else {
-                stream.write(Tags.TagInteger);
+                stream.writeByte(Tags.TagInteger);
             }
-            stream.write(n);
-            stream.write(Tags.TagSemicolon);
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagSemicolon);
         }
     }
 
     function writeDouble(writer, n) {
         var stream = writer.stream;
-        if (n !== n) {
-            stream.write(Tags.TagNaN);
+        if (isNaN(n)) {
+            stream.writeByte(Tags.TagNaN);
         }
-        else if (n !== Infinity && n !== -Infinity) {
-            stream.write(Tags.TagDouble);
-            stream.write(n);
-            stream.write(Tags.TagSemicolon);
+        else if (isFinite(n)) {
+            stream.writeByte(Tags.TagDouble);
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagSemicolon);
         }
         else {
-            stream.write(Tags.TagInfinity);
-            stream.write((n > 0) ? Tags.TagPos : Tags.TagNeg);
+            stream.writeByte(Tags.TagInfinity);
+            stream.writeByte((n > 0) ? Tags.TagPos : Tags.TagNeg);
         }
     }
 
     function writeBoolean(writer, b) {
-        writer.stream.write(b.valueOf() ? Tags.TagTrue : Tags.TagFalse);
+        writer.stream.writeByte(b.valueOf() ? Tags.TagTrue : Tags.TagFalse);
     }
 
     function writeUTCDate(writer, date) {
         writer._refer.set(date);
         var stream = writer.stream;
-        stream.write(Tags.TagDate);
-        stream.write(('0000' + date.getUTCFullYear()).slice(-4));
-        stream.write(('00' + (date.getUTCMonth() + 1)).slice(-2));
-        stream.write(('00' + date.getUTCDate()).slice(-2));
-        stream.write(Tags.TagTime);
-        stream.write(('00' + date.getUTCHours()).slice(-2));
-        stream.write(('00' + date.getUTCMinutes()).slice(-2));
-        stream.write(('00' + date.getUTCSeconds()).slice(-2));
-        var millisecond = date.getUTCMilliseconds();
-        if (millisecond !== 0) {
-            stream.write(Tags.TagPoint);
-            stream.write(('000' + millisecond).slice(-3));
+        var year = ('0000' + date.getUTCFullYear()).slice(-4);
+        var month = ('00' + (date.getUTCMonth() + 1)).slice(-2);
+        var day = ('00' + date.getUTCDate()).slice(-2);
+        var hour = ('00' + date.getUTCHours()).slice(-2);
+        var minute = ('00' + date.getUTCMinutes()).slice(-2);
+        var second = ('00' + date.getUTCSeconds()).slice(-2);
+        var millisecond = ('000' + date.getUTCMilliseconds()).slice(-3);
+        stream.writeByte(Tags.TagDate);
+        stream.writeAsciiString(year + month + day);
+        stream.writeByte(Tags.TagTime);
+        stream.writeAsciiString(hour + minute + second);
+        if (millisecond !== '000') {
+            stream.writeByte(Tags.TagPoint);
+            stream.writeAsciiString(millisecond);
         }
-        stream.write(Tags.TagUTC);
+        stream.writeByte(Tags.TagUTC);
     }
 
     function writeDate(writer, date) {
@@ -228,36 +256,28 @@
         var millisecond = ('000' + date.getMilliseconds()).slice(-3);
         if ((hour === '00') && (minute === '00') &&
             (second === '00') && (millisecond === '000')) {
-            stream.write(Tags.TagDate);
-            stream.write(year);
-            stream.write(month);
-            stream.write(day);
+            stream.writeByte(Tags.TagDate);
+            stream.writeAsciiString(year + month + day);
         }
         else if ((year === '1970') && (month === '01') && (day === '01')) {
-            stream.write(Tags.TagTime);
-            stream.write(hour);
-            stream.write(minute);
-            stream.write(second);
+            stream.writeByte(Tags.TagTime);
+            stream.writeAsciiString(hour + minute + second);
             if (millisecond !== '000') {
-                stream.write(Tags.TagPoint);
-                stream.write(millisecond);
+                stream.writeByte(Tags.TagPoint);
+                stream.writeAsciiString(millisecond);
             }
         }
         else {
-            stream.write(Tags.TagDate);
-            stream.write(year);
-            stream.write(month);
-            stream.write(day);
-            stream.write(Tags.TagTime);
-            stream.write(hour);
-            stream.write(minute);
-            stream.write(second);
+            stream.writeByte(Tags.TagDate);
+            stream.writeAsciiString(year + month + day);
+            stream.writeByte(Tags.TagTime);
+            stream.writeAsciiString(hour + minute + second);
             if (millisecond !== '000') {
-                stream.write(Tags.TagPoint);
-                stream.write(millisecond);
+                stream.writeByte(Tags.TagPoint);
+                stream.writeAsciiString(millisecond);
             }
         }
-        stream.write(Tags.TagSemicolon);
+        stream.writeByte(Tags.TagSemicolon);
     }
 
     function writeTime(writer, time) {
@@ -267,49 +287,75 @@
         var minute = ('00' + time.getMinutes()).slice(-2);
         var second = ('00' + time.getSeconds()).slice(-2);
         var millisecond = ('000' + time.getMilliseconds()).slice(-3);
-        stream.write(Tags.TagTime);
-        stream.write(hour);
-        stream.write(minute);
-        stream.write(second);
+        stream.writeByte(Tags.TagTime);
+        stream.writeAsciiString(hour + minute + second);
         if (millisecond !== '000') {
-            stream.write(Tags.TagPoint);
-            stream.write(millisecond);
+            stream.writeByte(Tags.TagPoint);
+            stream.writeAsciiString(millisecond);
         }
-        stream.write(Tags.TagSemicolon);
+        stream.writeByte(Tags.TagSemicolon);
+    }
+
+    function writeBytes(writer, bytes) {
+        writer._refer.set(bytes);
+        var stream = writer.stream;
+        stream.writeByte(Tags.TagBytes);
+        var n = bytes.byteLength || bytes.length;
+        if (n > 0) {
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagQuote);
+            stream.write(bytes);
+        }
+        else {
+            stream.writeByte(Tags.TagQuote);
+        }
+        stream.writeByte(Tags.TagQuote);
     }
 
     function writeString(writer, str) {
         writer._refer.set(str);
         var stream = writer.stream;
         var n = str.length;
-        stream.write(Tags.TagString);
+        stream.writeByte(Tags.TagString);
         if (n > 0) {
-            stream.write(n);
-            stream.write(Tags.TagQuote);
-            stream.write(str);
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagQuote);
+            stream.writeString(str);
         }
         else {
-            stream.write(Tags.TagQuote);
+            stream.writeByte(Tags.TagQuote);
         }
-        stream.write(Tags.TagQuote);
+        stream.writeByte(Tags.TagQuote);
     }
 
-    function writeList(writer, array) {
+    function writeArray(writer, array, writeElem) {
         writer._refer.set(array);
         var stream = writer.stream;
         var n = array.length;
-        stream.write(Tags.TagList);
+        stream.writeByte(Tags.TagList);
         if (n > 0) {
-            stream.write(n);
-            stream.write(Tags.TagOpenbrace);
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagOpenbrace);
             for (var i = 0; i < n; i++) {
-                serialize(writer, array[i]);
+                writeElem(writer, array[i]);
             }
         }
         else {
-            stream.write(Tags.TagOpenbrace);
+            stream.writeByte(Tags.TagOpenbrace);
         }
-        stream.write(Tags.TagClosebrace);
+        stream.writeByte(Tags.TagClosebrace);
+    }
+
+    function writeIntListWithRef(writer, list) {
+        if (!writer._refer.write(list)) {
+            writeArray(writer, list, writeInteger);
+        }
+    }
+
+    function writeDoubleListWithRef(writer, list) {
+        if (!writer._refer.write(list)) {
+            writeArray(writer, list, writeDouble);
+        }
     }
 
     function writeMap(writer, map) {
@@ -323,38 +369,38 @@
             }
         }
         var n = fields.length;
-        stream.write(Tags.TagMap);
+        stream.writeByte(Tags.TagMap);
         if (n > 0) {
-            stream.write(n);
-            stream.write(Tags.TagOpenbrace);
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagOpenbrace);
             for (var i = 0; i < n; i++) {
                 serialize(writer, fields[i]);
                 serialize(writer, map[fields[i]]);
             }
         }
         else {
-            stream.write(Tags.TagOpenbrace);
+            stream.writeByte(Tags.TagOpenbrace);
         }
-        stream.write(Tags.TagClosebrace);
+        stream.writeByte(Tags.TagClosebrace);
     }
 
     function writeHarmonyMap(writer, map) {
         writer._refer.set(map);
         var stream = writer.stream;
         var n = map.size;
-        stream.write(Tags.TagMap);
+        stream.writeByte(Tags.TagMap);
         if (n > 0) {
-            stream.write(n);
-            stream.write(Tags.TagOpenbrace);
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagOpenbrace);
             map.forEach(function(value, key) {
                 serialize(writer, key);
                 serialize(writer, value);
             });
         }
         else {
-            stream.write(Tags.TagOpenbrace);
+            stream.writeByte(Tags.TagOpenbrace);
         }
-        stream.write(Tags.TagClosebrace);
+        stream.writeByte(Tags.TagClosebrace);
     }
 
     function writeObject(writer, obj) {
@@ -375,36 +421,36 @@
             }
             index = writeClass(writer, classname, fields);
         }
-        stream.write(Tags.TagObject);
-        stream.write(index);
-        stream.write(Tags.TagOpenbrace);
+        stream.writeByte(Tags.TagObject);
+        stream.writeAsciiString('' + index);
+        stream.writeByte(Tags.TagOpenbrace);
         writer._refer.set(obj);
         var n = fields.length;
         for (var i = 0; i < n; i++) {
             serialize(writer, obj[fields[i]]);
         }
-        stream.write(Tags.TagClosebrace);
+        stream.writeByte(Tags.TagClosebrace);
     }
 
     function writeClass(writer, classname, fields) {
         var stream = writer.stream;
         var n = fields.length;
-        stream.write(Tags.TagClass);
-        stream.write(classname.length);
-        stream.write(Tags.TagQuote);
-        stream.write(classname);
-        stream.write(Tags.TagQuote);
+        stream.writeByte(Tags.TagClass);
+        stream.writeAsciiString('' + classname.length);
+        stream.writeByte(Tags.TagQuote);
+        stream.writeString(classname);
+        stream.writeByte(Tags.TagQuote);
         if (n > 0) {
-            stream.write(n);
-            stream.write(Tags.TagOpenbrace);
+            stream.writeAsciiString('' + n);
+            stream.writeByte(Tags.TagOpenbrace);
             for (var i = 0; i < n; i++) {
                 writeString(writer, fields[i]);
             }
         }
         else {
-            stream.write(Tags.TagOpenbrace);
+            stream.writeByte(Tags.TagOpenbrace);
         }
-        stream.write(Tags.TagClosebrace);
+        stream.writeByte(Tags.TagClosebrace);
         var index = writer._fieldsref.length;
         writer._classref[classname] = index;
         writer._fieldsref[index] = fields;
@@ -448,6 +494,14 @@
                 writeTime(this, value);
             }
         } },
+        writeBytes: { value: function(value) {
+            writeBytes(this, value);
+        } },
+        writeBytesWithRef: { value: function(value) {
+            if (!this._refer.write(value)) {
+                writeBytes(this, value);
+            }
+        } },
         writeString: { value: function(value) {
             writeString(this, value);
         } },
@@ -457,11 +511,11 @@
             }
         } },
         writeList: { value: function(value) {
-            writeList(this, value);
+            writeArray(this, value, serialize);
         } },
         writeListWithRef: { value: function(value) {
             if (!this._refer.write(value)) {
-                writeList(this, value);
+                writeArray(this, value, serialize);
             }
         } },
         writeMap: { value: function(value) {
@@ -474,7 +528,12 @@
         } },
         writeMapWithRef: { value: function(value) {
             if (!this._refer.write(value)) {
-                this.writeMap(value);
+                if (value instanceof Map) {
+                    writeHarmonyMap(this, value);
+                }
+                else {
+                    writeMap(this, value);
+                }
             }
         } },
         writeObject: { value: function(value) {

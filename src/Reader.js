@@ -13,51 +13,60 @@
  *                                                        *
  * hprose Reader for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
 (function (hprose, undefined) {
     'use strict';
-    var StringIO = hprose.StringIO;
+    var Map = hprose.Map;
+    var BytesIO = hprose.BytesIO;
     var Tags = hprose.Tags;
     var ClassManager = hprose.ClassManager;
-    var Map = hprose.Map;
 
     function unexpectedTag(tag, expectTags) {
         if (tag && expectTags) {
-            throw new Error('Tag "' + expectTags + '" expected, but "' + tag + '" found in stream');
+            var expectTagStr = '';
+            if (typeof(expectTags) === 'number') {
+                expectTagStr = String.fromCharCode(expectTags);
+            }
+            else {
+                expectTagStr = String.fromCharCode.apply(String, expectTags);
+            }
+            throw new Error('Tag "' + expectTagStr + '" expected, but "' + String.fromCharCode(tag) + '" found in stream');
         }
-        if (tag) {
-            throw new Error('Unexpected serialize tag "' + tag + '" in stream');
+        else if (tag) {
+            throw new Error('Unexpected serialize tag "' + String.fromCharCode(tag) + '" in stream');
         }
-        throw new Error('No byte found in stream');
+        else {
+            throw new Error('No byte found in stream');
+        }
     }
 
     function readRaw(stream) {
-        var ostream = new StringIO();
+        var ostream = new BytesIO();
         _readRaw(stream, ostream);
-        return ostream.take();
+        return ostream.bytes;
     }
 
     function _readRaw(stream, ostream) {
-        __readRaw(stream, ostream, stream.readChar());
+        __readRaw(stream, ostream, stream.readByte());
     }
 
     function __readRaw(stream, ostream, tag) {
-        ostream.write(tag);
+        ostream.writeByte(tag);
         switch (tag) {
-            case '0':
-            case '1':
-            case '2':
-            case '3':
-            case '4':
-            case '5':
-            case '6':
-            case '7':
-            case '8':
-            case '9':
+            case 48:
+            case 49:
+            case 50:
+            case 51:
+            case 52:
+            case 53:
+            case 54:
+            case 55:
+            case 56:
+            case 57:
             case Tags.TagNull:
             case Tags.TagEmpty:
             case Tags.TagTrue:
@@ -65,7 +74,7 @@
             case Tags.TagNaN:
                 break;
             case Tags.TagInfinity:
-                ostream.write(stream.read());
+                ostream.writeByte(stream.readByte());
                 break;
             case Tags.TagInteger:
             case Tags.TagLong:
@@ -79,6 +88,9 @@
                 break;
             case Tags.TagUTF8Char:
                 readUTF8CharRaw(stream, ostream);
+                break;
+            case Tags.TagBytes:
+                readBytesRaw(stream, ostream);
                 break;
             case Tags.TagString:
                 readStringRaw(stream, ostream);
@@ -101,53 +113,59 @@
             default: unexpectedTag(tag);
         }
     }
-
     function readNumberRaw(stream, ostream) {
         var tag;
         do {
-            tag = stream.read();
-            ostream.write(tag);
+            tag = stream.readByte();
+            ostream.writeByte(tag);
         } while (tag !== Tags.TagSemicolon);
     }
-
     function readDateTimeRaw(stream, ostream) {
         var tag;
         do {
-            tag = stream.read();
-            ostream.write(tag);
+            tag = stream.readByte();
+            ostream.writeByte(tag);
         } while (tag !== Tags.TagSemicolon &&
                  tag !== Tags.TagUTC);
     }
-
     function readUTF8CharRaw(stream, ostream) {
-        ostream.write(stream.readChar());
+        ostream.writeString(stream.readString(1));
     }
-
-    function readStringRaw(stream, ostream) {
-        var s = stream.readUntil(Tags.TagQuote);
-        ostream.write(s);
-        ostream.write(Tags.TagQuote);
+    function readBytesRaw(stream, ostream) {
         var count = 0;
-        if (s.length > 0) {
-            count = parseInt(s, 10);
-        }
+        var tag = 48;
+        do {
+            count *= 10;
+            count += tag - 48;
+            tag = stream.readByte();
+            ostream.writeByte(tag);
+        } while (tag !== Tags.TagQuote);
         ostream.write(stream.read(count + 1));
     }
-
+    function readStringRaw(stream, ostream) {
+        var count = 0;
+        var tag = 48;
+        do {
+            count *= 10;
+            count += tag - 48;
+            tag = stream.readByte();
+            ostream.writeByte(tag);
+        } while (tag !== Tags.TagQuote);
+        ostream.write(stream.readStringAsBytes(count + 1));
+    }
     function readGuidRaw(stream, ostream) {
         ostream.write(stream.read(38));
     }
-
     function readComplexRaw(stream, ostream) {
         var tag;
         do {
-            tag = stream.readChar();
-            ostream.write(tag);
+            tag = stream.readByte();
+            ostream.writeByte(tag);
         } while (tag !== Tags.TagOpenbrace);
-        while ((tag = stream.readChar()) !== Tags.TagClosebrace) {
+        while ((tag = stream.readByte()) !== Tags.TagClosebrace) {
             __readRaw(stream, ostream, tag);
         }
-        ostream.write(tag);
+        ostream.writeByte(tag);
     }
 
     function RawReader(stream) {
@@ -185,11 +203,9 @@
         var cls = ClassManager.getClass(classname);
         if (cls) { return cls; }
         cls = function () {};
-        Object.defineProperties(cls.prototype, {
-            'getClassName': { value: function () {
-                return classname;
-            } }
-        });
+        Object.defineProperty(cls.prototype, 'getClassName', { value: function () {
+            return classname;
+        }});
         ClassManager.register(cls, classname);
         return cls;
     }
@@ -199,21 +215,20 @@
         if (s.length === 0) { return 0; }
         return parseInt(s, 10);
     }
-
     function unserialize(reader) {
         var stream = reader.stream;
-        var tag = stream.readChar();
+        var tag = stream.readByte();
         switch (tag) {
-            case '0': return 0;
-            case '1': return 1;
-            case '2': return 2;
-            case '3': return 3;
-            case '4': return 4;
-            case '5': return 5;
-            case '6': return 6;
-            case '7': return 7;
-            case '8': return 8;
-            case '9': return 9;
+            case 48:
+            case 49:
+            case 50:
+            case 51:
+            case 52:
+            case 53:
+            case 54:
+            case 55:
+            case 56:
+            case 57: return tag - 48;
             case Tags.TagInteger: return readIntegerWithoutTag(stream);
             case Tags.TagLong: return readLongWithoutTag(stream);
             case Tags.TagDouble: return readDoubleWithoutTag(stream);
@@ -225,6 +240,7 @@
             case Tags.TagInfinity: return readInfinityWithoutTag(stream);
             case Tags.TagDate: return readDateWithoutTag(reader);
             case Tags.TagTime: return readTimeWithoutTag(reader);
+            case Tags.TagBytes: return readBytesWithoutTag(reader);
             case Tags.TagUTF8Char: return readUTF8CharWithoutTag(reader);
             case Tags.TagString: return readStringWithoutTag(reader);
             case Tags.TagGuid: return readGuidWithoutTag(reader);
@@ -241,18 +257,18 @@
         return readInt(stream, Tags.TagSemicolon);
     }
     function readInteger(stream) {
-        var tag = stream.readChar();
+        var tag = stream.readByte();
         switch (tag) {
-            case '0': return 0;
-            case '1': return 1;
-            case '2': return 2;
-            case '3': return 3;
-            case '4': return 4;
-            case '5': return 5;
-            case '6': return 6;
-            case '7': return 7;
-            case '8': return 8;
-            case '9': return 9;
+            case 48:
+            case 49:
+            case 50:
+            case 51:
+            case 52:
+            case 53:
+            case 54:
+            case 55:
+            case 56:
+            case 57: return tag - 48;
             case Tags.TagInteger: return readIntegerWithoutTag(stream);
             default: unexpectedTag(tag);
         }
@@ -264,18 +280,18 @@
         return s;
     }
     function readLong(stream) {
-        var tag = stream.readChar();
+        var tag = stream.readByte();
         switch (tag) {
-            case '0': return 0;
-            case '1': return 1;
-            case '2': return 2;
-            case '3': return 3;
-            case '4': return 4;
-            case '5': return 5;
-            case '6': return 6;
-            case '7': return 7;
-            case '8': return 8;
-            case '9': return 9;
+            case 48:
+            case 49:
+            case 50:
+            case 51:
+            case 52:
+            case 53:
+            case 54:
+            case 55:
+            case 56:
+            case 57: return tag - 48;
             case Tags.TagInteger:
             case Tags.TagLong: return readLongWithoutTag(stream);
             default: unexpectedTag(tag);
@@ -285,18 +301,18 @@
         return parseFloat(stream.readUntil(Tags.TagSemicolon));
     }
     function readDouble(stream) {
-        var tag = stream.readChar();
+        var tag = stream.readByte();
         switch (tag) {
-            case '0': return 0;
-            case '1': return 1;
-            case '2': return 2;
-            case '3': return 3;
-            case '4': return 4;
-            case '5': return 5;
-            case '6': return 6;
-            case '7': return 7;
-            case '8': return 8;
-            case '9': return 9;
+            case 48:
+            case 49:
+            case 50:
+            case 51:
+            case 52:
+            case 53:
+            case 54:
+            case 55:
+            case 56:
+            case 57: return tag - 48;
             case Tags.TagInteger:
             case Tags.TagLong:
             case Tags.TagDouble: return readDoubleWithoutTag(stream);
@@ -306,10 +322,10 @@
         }
     }
     function readInfinityWithoutTag(stream) {
-        return ((stream.readChar() === Tags.TagNeg) ? -Infinity : Infinity);
+        return ((stream.readByte() === Tags.TagNeg) ? -Infinity : Infinity);
     }
     function readBoolean(stream) {
-        var tag = stream.readChar();
+        var tag = stream.readByte();
         switch (tag) {
             case Tags.TagTrue: return true;
             case Tags.TagFalse: return false;
@@ -318,26 +334,26 @@
     }
     function readDateWithoutTag(reader) {
         var stream = reader.stream;
-        var year = parseInt(stream.read(4), 10);
-        var month = parseInt(stream.read(2), 10) - 1;
-        var day = parseInt(stream.read(2), 10);
+        var year = parseInt(stream.readAsciiString(4), 10);
+        var month = parseInt(stream.readAsciiString(2), 10) - 1;
+        var day = parseInt(stream.readAsciiString(2), 10);
         var date;
-        var tag = stream.readChar();
+        var tag = stream.readByte();
         if (tag === Tags.TagTime) {
-            var hour = parseInt(stream.read(2), 10);
-            var minute = parseInt(stream.read(2), 10);
-            var second = parseInt(stream.read(2), 10);
+            var hour = parseInt(stream.readAsciiString(2), 10);
+            var minute = parseInt(stream.readAsciiString(2), 10);
+            var second = parseInt(stream.readAsciiString(2), 10);
             var millisecond = 0;
-            tag = stream.readChar();
+            tag = stream.readByte();
             if (tag === Tags.TagPoint) {
-                millisecond = parseInt(stream.read(3), 10);
-                tag = stream.readChar();
-                if ((tag >= '0') && (tag <= '9')) {
+                millisecond = parseInt(stream.readAsciiString(3), 10);
+                tag = stream.readByte();
+                if ((tag >= 48) && (tag <= 57)) {
                     stream.skip(2);
-                    tag = stream.readChar();
-                    if ((tag >= '0') && (tag <= '9')) {
+                    tag = stream.readByte();
+                    if ((tag >= 48) && (tag <= 57)) {
                         stream.skip(2);
-                        tag = stream.readChar();
+                        tag = stream.readByte();
                     }
                 }
             }
@@ -358,7 +374,7 @@
         return date;
     }
     function readDate(reader) {
-        var tag = reader.stream.readChar();
+        var tag = reader.stream.readByte();
         switch (tag) {
             case Tags.TagNull: return null;
             case Tags.TagDate: return readDateWithoutTag(reader);
@@ -369,20 +385,20 @@
     function readTimeWithoutTag(reader) {
         var stream = reader.stream;
         var time;
-        var hour = parseInt(stream.read(2), 10);
-        var minute = parseInt(stream.read(2), 10);
-        var second = parseInt(stream.read(2), 10);
+        var hour = parseInt(stream.readAsciiString(2), 10);
+        var minute = parseInt(stream.readAsciiString(2), 10);
+        var second = parseInt(stream.readAsciiString(2), 10);
         var millisecond = 0;
-        var tag = stream.readChar();
+        var tag = stream.readByte();
         if (tag === Tags.TagPoint) {
-            millisecond = parseInt(stream.read(3), 10);
-            tag = stream.readChar();
-            if ((tag >= '0') && (tag <= '9')) {
+            millisecond = parseInt(stream.readAsciiString(3), 10);
+            tag = stream.readByte();
+            if ((tag >= 48) && (tag <= 57)) {
                 stream.skip(2);
-                tag = stream.readChar();
-                if ((tag >= '0') && (tag <= '9')) {
+                tag = stream.readByte();
+                if ((tag >= 48) && (tag <= 57)) {
                     stream.skip(2);
-                    tag = stream.readChar();
+                    tag = stream.readByte();
                 }
             }
         }
@@ -396,7 +412,7 @@
         return time;
     }
     function readTime(reader) {
-        var tag = reader.stream.readChar();
+        var tag = reader.stream.readByte();
         switch (tag) {
             case Tags.TagNull: return null;
             case Tags.TagTime: return readTimeWithoutTag(reader);
@@ -404,13 +420,30 @@
             default: unexpectedTag(tag);
         }
     }
+    function readBytesWithoutTag(reader) {
+        var stream = reader.stream;
+        var count = readInt(stream, Tags.TagQuote);
+        var bytes = stream.read(count);
+        stream.skip(1);
+        reader.refer.set(bytes);
+        return bytes;
+    }
+    function readBytes(reader) {
+        var tag = reader.stream.readByte();
+        switch (tag) {
+            case Tags.TagNull: return null;
+            case Tags.TagEmpty: return new Uint8Array(0);
+            case Tags.TagBytes: return readBytesWithoutTag(reader);
+            case Tags.TagRef: return readRef(reader);
+            default: unexpectedTag(tag);
+        }
+    }
     function readUTF8CharWithoutTag(reader) {
-        return reader.stream.read(1);
+        return reader.stream.readString(1);
     }
     function _readString(reader) {
         var stream = reader.stream;
-        var count = readInt(stream, Tags.TagQuote);
-        var s = stream.read(count);
+        var s = stream.readString(readInt(stream, Tags.TagQuote));
         stream.skip(1);
         return s;
     }
@@ -420,7 +453,7 @@
         return s;
     }
     function readString(reader) {
-        var tag = reader.stream.readChar();
+        var tag = reader.stream.readByte();
         switch (tag) {
             case Tags.TagNull: return null;
             case Tags.TagEmpty: return '';
@@ -433,13 +466,13 @@
     function readGuidWithoutTag(reader) {
         var stream = reader.stream;
         stream.skip(1);
-        var s = stream.read(36);
+        var s = stream.readAsciiString(36);
         stream.skip(1);
         reader.refer.set(s);
         return s;
     }
     function readGuid(reader) {
-        var tag = reader.stream.readChar();
+        var tag = reader.stream.readByte();
         switch (tag) {
             case Tags.TagNull: return null;
             case Tags.TagGuid: return readGuidWithoutTag(reader);
@@ -459,7 +492,7 @@
         return list;
     }
     function readList(reader) {
-        var tag = reader.stream.readChar();
+        var tag = reader.stream.readByte();
         switch (tag) {
             case Tags.TagNull: return null;
             case Tags.TagList: return readListWithoutTag(reader);
@@ -481,7 +514,7 @@
         return map;
     }
     function readMap(reader) {
-        var tag = reader.stream.readChar();
+        var tag = reader.stream.readByte();
         switch (tag) {
             case Tags.TagNull: return null;
             case Tags.TagMap: return readMapWithoutTag(reader);
@@ -503,7 +536,7 @@
         return map;
     }
     function readHarmonyMap(reader) {
-        var tag = reader.stream.readChar();
+        var tag = reader.stream.readByte();
         switch (tag) {
             case Tags.TagNull: return null;
             case Tags.TagMap: return readHarmonyMapWithoutTag(reader);
@@ -523,7 +556,7 @@
         return obj;
     }
     function readObject(reader) {
-        var tag = reader.stream.readChar();
+        var tag = reader.stream.readByte();
         switch(tag) {
             case Tags.TagNull: return null;
             case Tags.TagClass: readClass(reader); return readObject(reader);
@@ -567,11 +600,11 @@
     Object.defineProperties(Reader.prototype, {
         useHarmonyMap: { value: false, writable: true },
         checkTag: { value: function(expectTag, tag) {
-            if (tag === undefined) { tag = this.stream.readChar(); }
+            if (tag === undefined) { tag = this.stream.readByte(); }
             if (tag !== expectTag) { unexpectedTag(tag, expectTag); }
         } },
         checkTags: { value: function(expectTags, tag) {
-            if (tag === undefined) { tag = this.stream.readChar(); }
+            if (tag === undefined) { tag = this.stream.readByte(); }
             if (expectTags.indexOf(tag) >= 0) { return tag; }
             unexpectedTag(tag, expectTags);
         } },
@@ -601,6 +634,12 @@
         } },
         readTime: { value: function() {
             return readTime(this);
+        } },
+        readBytesWithoutTag: { value: function() {
+            return readBytesWithoutTag(this);
+        } },
+        readBytes: { value: function() {
+            return readBytes(this);
         } },
         readStringWithoutTag: { value: function() {
             return readStringWithoutTag(this);
