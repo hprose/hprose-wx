@@ -4780,6 +4780,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
     var Client = hprose.Client;
     var Future = hprose.Future;
     var parseuri = hprose.parseuri;
+    var setImmediate = hprose.setImmediate;
 
     var OPENING = 1;
     var OPENED  = 2;
@@ -4874,6 +4875,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
         function sendAndReceive(request, env) {
             if (ws === CLOSING || ws === CLOSED) {
                 _ready = new Future();
+                setImmediate(connect);
             }
             var id = getNextId();
             var future = new Future();
@@ -4894,9 +4896,6 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
             }
             else {
                 _requests.push([id, request]);
-            }
-            if (ws === CLOSING || ws === CLOSED) {
-                connect();
             }
             if (env.oneway) { future.resolve(); }
             return future;
