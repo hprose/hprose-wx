@@ -729,20 +729,49 @@ TimeoutError.prototype.constructor = TimeoutError;
         return function() {
             var args = Array.slice(arguments, 0);
             var thisArg = this;
+            var results = new Future();
+            args.push(function() {
+                thisArg = this;
+                results.resolve(arguments);
+            });
+            try {
+                fn.apply(this, args);
+            }
+            catch (err) {
+                results.resolve([err]);
+            }
             return function(done) {
-                var called;
-                args.push(function() {
-                    if (called) return;
-                    called = true;
-                    done.apply(null, arguments);
+                results.then(function(results) {
+                    done.apply(thisArg, results);
                 });
-                try {
-                    fn.apply(thisArg, args);
-                }
-                catch (err) {
-                    done(err, undefined);
-                }
             };
+        };
+    }
+
+    function promisify(fn) {
+        return function() {
+            var args = Array.slice(arguments, 0);
+            var results = new Future();
+            args.push(function(err, res) {
+                if (arguments.length < 2) {
+                    if (err instanceof Error) {
+                        return results.reject(err);
+                    }
+                    return results.resolve(err);
+                }
+                if (err) return results.reject(err);
+                if (arguments.length > 2) {
+                    res = Array.slice(arguments, 1);
+                }
+                results.resolve(res);
+            });
+            try {
+                fn.apply(this, args);
+            }
+            catch (err) {
+                results.reject(err);
+            }
+            return results;
         };
     }
 
@@ -949,6 +978,7 @@ TimeoutError.prototype.constructor = TimeoutError;
         attempt: { value: attempt },
         run: { value: run },
         thunkify: { value: thunkify },
+        promisify: { value: promisify },
         co: { value: co },
         wrap: { value: wrap },
         // for array
@@ -1258,6 +1288,7 @@ TimeoutError.prototype.constructor = TimeoutError;
     hprose.Future = Future;
 
     hprose.thunkify = thunkify;
+    hprose.promisify = promisify;
     hprose.co = co;
     hprose.co.wrap = hprose.wrap = wrap;
 
