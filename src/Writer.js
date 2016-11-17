@@ -20,10 +20,8 @@
 
 (function (hprose, undefined) {
     'use strict';
-    var StringIO = hprose.StringIO;
     var Tags = hprose.Tags;
     var ClassManager = hprose.ClassManager;
-    var utf8Encode = StringIO.utf8Encode;
     var Map = hprose.Map;
 
     function getClassName(obj) {

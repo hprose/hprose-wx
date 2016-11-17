@@ -13,7 +13,7 @@
  *                                                        *
  * hprose loader for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 10, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -45,4 +45,5 @@ hprose.filter = {
     JSONRPCClientFilter: hprose.JSONRPCClientFilter
 };
 
+/* global module */
 module.exports = hprose;

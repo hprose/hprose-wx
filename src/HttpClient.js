@@ -12,11 +12,12 @@
  *                                                        *
  * hprose http client for WeChat App.                     *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
+/* global wx */
 (function (hprose) {
     'use strict';
     var Client = hprose.Client;

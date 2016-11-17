@@ -28,7 +28,6 @@
     var Future = hprose.Future;
     var parseuri = hprose.parseuri;
     var isObjectEmpty = hprose.isObjectEmpty;
-    var Map = hprose.Map;
 
     var GETFUNCTIONS = Tags.TagEnd;
 

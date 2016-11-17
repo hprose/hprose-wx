@@ -181,64 +181,9 @@
         return new RealReaderRefer();
     }
 
-    function getter(str) {
-        var obj = global;
-        var names = str.split('.');
-        var i;
-        for (i = 0; i < names.length; i++) {
-            obj = obj[names[i]];
-            if (obj === undefined) {
-                return null;
-            }
-        }
-        return obj;
-    }
-    function findClass(cn, poslist, i, c) {
-        if (i < poslist.length) {
-            var pos = poslist[i];
-            cn[pos] = c;
-            var cls = findClass(cn, poslist, i + 1, '.');
-            if (i + 1 < poslist.length) {
-                if (cls === null) {
-                    cls = findClass(cn, poslist, i + 1, '_');
-                }
-            }
-            return cls;
-        }
-        var classname = cn.join('');
-        try {
-            var cl = getter(classname);
-            return ((typeof(cl) === 'function') ? cl : null);
-        } catch (e) {
-            return null;
-        }
-    }
-
     function getClass(classname) {
         var cls = ClassManager.getClass(classname);
         if (cls) { return cls; }
-        cls = getter(classname);
-        if (typeof(cls) === 'function') {
-            ClassManager.register(cls, classname);
-            return cls;
-        }
-        var poslist = [];
-        var pos = classname.indexOf('_');
-        while (pos >= 0) {
-            poslist[poslist.length] = pos;
-            pos = classname.indexOf('_', pos + 1);
-        }
-        if (poslist.length > 0) {
-            var cn = classname.split('');
-            cls = findClass(cn, poslist, 0, '.');
-            if (cls === null) {
-                cls = findClass(cn, poslist, 0, '_');
-            }
-            if (typeof(cls) === 'function') {
-                ClassManager.register(cls, classname);
-                return cls;
-            }
-        }
         cls = function () {};
         Object.defineProperties(cls.prototype, {
             'getClassName': { value: function () {

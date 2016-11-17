@@ -274,11 +274,12 @@ TimeoutError.prototype.constructor = TimeoutError;
  *                                                        *
  * hprose Map for WeChat App.                             *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
+/* global Map, WeakMap */
 (function(hprose) {
     'use strict';
     var namespaces = Object.create(null);
@@ -503,11 +504,12 @@ TimeoutError.prototype.constructor = TimeoutError;
  *                                                        *
  * hprose Future for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
+/* global Promise */
 (function (hprose, undefined) {
     'use strict';
     var PENDING = 0;
@@ -688,7 +690,7 @@ TimeoutError.prototype.constructor = TimeoutError;
     }
 
     function isGenerator(obj) {
-        return 'function' == typeof obj.next && 'function' == typeof obj.throw;
+        return 'function' == typeof obj.next && 'function' == typeof obj['throw'];
     }
 
     function isGeneratorFunction(obj) {
@@ -716,7 +718,9 @@ TimeoutError.prototype.constructor = TimeoutError;
                 }
                 return future.resolve(err);
             }
-            if (err) return future.reject(err);
+            if (err) {
+                return future.reject(err);
+            }
             if (arguments.length > 2) {
                 res = Array.slice(arguments, 1);
             }
@@ -759,7 +763,9 @@ TimeoutError.prototype.constructor = TimeoutError;
                     }
                     return results.resolve(err);
                 }
-                if (err) return results.reject(err);
+                if (err) {
+                    return results.reject(err);
+                }
                 if (arguments.length > 2) {
                     res = Array.slice(arguments, 1);
                 }
@@ -776,10 +782,18 @@ TimeoutError.prototype.constructor = TimeoutError;
     }
 
     function toPromise(obj) {
-        if (!obj) return value(obj);
-        if (isPromise(obj)) return obj;
-        if (isGeneratorFunction(obj) || isGenerator(obj)) return co(obj);
-        if ('function' == typeof obj) return thunkToPromise(obj);
+        if (!obj) {
+            return value(obj);
+        }
+        if (isPromise(obj)) {
+            return obj;
+        }
+        if (isGeneratorFunction(obj) || isGenerator(obj)) {
+            return co(obj);
+        }
+        if ('function' == typeof obj) {
+            return thunkToPromise(obj);
+        }
         return value(obj);
     }
 
@@ -802,7 +816,7 @@ TimeoutError.prototype.constructor = TimeoutError;
 
         function onRejected(err) {
             try {
-                next(gen.throw(err));
+                next(gen['throw'](err));
             }
             catch (e) {
                 return future.reject(e);
@@ -2113,10 +2127,8 @@ hprose.Tags = {
 
 (function (hprose, undefined) {
     'use strict';
-    var StringIO = hprose.StringIO;
     var Tags = hprose.Tags;
     var ClassManager = hprose.ClassManager;
-    var utf8Encode = StringIO.utf8Encode;
     var Map = hprose.Map;
 
     function getClassName(obj) {
@@ -2774,64 +2786,9 @@ hprose.Tags = {
         return new RealReaderRefer();
     }
 
-    function getter(str) {
-        var obj = global;
-        var names = str.split('.');
-        var i;
-        for (i = 0; i < names.length; i++) {
-            obj = obj[names[i]];
-            if (obj === undefined) {
-                return null;
-            }
-        }
-        return obj;
-    }
-    function findClass(cn, poslist, i, c) {
-        if (i < poslist.length) {
-            var pos = poslist[i];
-            cn[pos] = c;
-            var cls = findClass(cn, poslist, i + 1, '.');
-            if (i + 1 < poslist.length) {
-                if (cls === null) {
-                    cls = findClass(cn, poslist, i + 1, '_');
-                }
-            }
-            return cls;
-        }
-        var classname = cn.join('');
-        try {
-            var cl = getter(classname);
-            return ((typeof(cl) === 'function') ? cl : null);
-        } catch (e) {
-            return null;
-        }
-    }
-
     function getClass(classname) {
         var cls = ClassManager.getClass(classname);
         if (cls) { return cls; }
-        cls = getter(classname);
-        if (typeof(cls) === 'function') {
-            ClassManager.register(cls, classname);
-            return cls;
-        }
-        var poslist = [];
-        var pos = classname.indexOf('_');
-        while (pos >= 0) {
-            poslist[poslist.length] = pos;
-            pos = classname.indexOf('_', pos + 1);
-        }
-        if (poslist.length > 0) {
-            var cn = classname.split('');
-            cls = findClass(cn, poslist, 0, '.');
-            if (cls === null) {
-                cls = findClass(cn, poslist, 0, '_');
-            }
-            if (typeof(cls) === 'function') {
-                ClassManager.register(cls, classname);
-                return cls;
-            }
-        }
         cls = function () {};
         Object.defineProperties(cls.prototype, {
             'getClassName': { value: function () {
@@ -3404,7 +3361,6 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
     var Future = hprose.Future;
     var parseuri = hprose.parseuri;
     var isObjectEmpty = hprose.isObjectEmpty;
-    var Map = hprose.Map;
 
     var GETFUNCTIONS = Tags.TagEnd;
 
@@ -4567,11 +4523,12 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
  *                                                        *
  * hprose http client for WeChat App.                     *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
+/* global wx */
 (function (hprose) {
     'use strict';
     var Client = hprose.Client;
@@ -4678,11 +4635,12 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
  *                                                        *
  * jsonrpc client filter for WeChat App.                  *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
+/* global JSON */
 (function (hprose) {
     'use strict';
     var Tags = hprose.Tags;
@@ -4770,7 +4728,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
  *                                                        *
  * hprose loader for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 10, 2016                             *
+ * LastModified: Nov 17, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -4802,4 +4760,5 @@ hprose.filter = {
     JSONRPCClientFilter: hprose.JSONRPCClientFilter
 };
 
+/* global module */
 module.exports = hprose;

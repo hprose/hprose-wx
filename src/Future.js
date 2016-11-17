@@ -18,6 +18,7 @@
  *                                                        *
 \**********************************************************/
 
+/* global Promise */
 (function (hprose, undefined) {
     'use strict';
     var PENDING = 0;
@@ -198,7 +199,7 @@
     }
 
     function isGenerator(obj) {
-        return 'function' == typeof obj.next && 'function' == typeof obj.throw;
+        return 'function' == typeof obj.next && 'function' == typeof obj['throw'];
     }
 
     function isGeneratorFunction(obj) {
@@ -226,7 +227,9 @@
                 }
                 return future.resolve(err);
             }
-            if (err) return future.reject(err);
+            if (err) {
+                return future.reject(err);
+            }
             if (arguments.length > 2) {
                 res = Array.slice(arguments, 1);
             }
@@ -269,7 +272,9 @@
                     }
                     return results.resolve(err);
                 }
-                if (err) return results.reject(err);
+                if (err) {
+                    return results.reject(err);
+                }
                 if (arguments.length > 2) {
                     res = Array.slice(arguments, 1);
                 }
@@ -286,10 +291,18 @@
     }
 
     function toPromise(obj) {
-        if (!obj) return value(obj);
-        if (isPromise(obj)) return obj;
-        if (isGeneratorFunction(obj) || isGenerator(obj)) return co(obj);
-        if ('function' == typeof obj) return thunkToPromise(obj);
+        if (!obj) {
+            return value(obj);
+        }
+        if (isPromise(obj)) {
+            return obj;
+        }
+        if (isGeneratorFunction(obj) || isGenerator(obj)) {
+            return co(obj);
+        }
+        if ('function' == typeof obj) {
+            return thunkToPromise(obj);
+        }
         return value(obj);
     }
 
@@ -312,7 +325,7 @@
 
         function onRejected(err) {
             try {
-                next(gen.throw(err));
+                next(gen['throw'](err));
             }
             catch (e) {
                 return future.reject(e);
