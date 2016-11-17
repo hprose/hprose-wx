@@ -4865,6 +4865,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
         }
         function connect() {
             ws = OPENING;
+            _ready = new Future();
             wx.connectSocket({url: self.uri});
             wx.onSocketOpen(onopen);
             wx.onSocketMessage(onmessage);
@@ -4872,9 +4873,6 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
             wx.onSocketClose(onclose);
         }
         function sendAndReceive(request, env) {
-            if (ws === CLOSING || ws === CLOSED) {
-                _ready = new Future();
-            }
             var id = getNextId();
             var future = new Future();
             _futures[id] = future;
@@ -4888,15 +4886,15 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
                     return e instanceof TimeoutError;
                 });
             }
+            if (ws === CLOSING || ws === CLOSED) {
+                connect();
+            }
             if (_count < 100) {
                 ++_count;
                 _ready.then(function() { send(id, request); });
             }
             else {
                 _requests.push([id, request]);
-            }
-            if (ws === CLOSING || ws === CLOSED) {
-                connect();
             }
             if (env.oneway) { future.resolve(); }
             return future;
