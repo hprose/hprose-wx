@@ -683,7 +683,8 @@
             );
         } },
         complete: { value: function(oncomplete) {
-           return this.then(oncomplete, oncomplete);
+            oncomplete = oncomplete || function(v) { return v; };
+            return this.then(oncomplete, oncomplete);
         } },
         always: { value: function(oncomplete) {
            this.done(oncomplete, oncomplete);
