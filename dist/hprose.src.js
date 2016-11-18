@@ -756,6 +756,53 @@ TimeoutError.prototype.constructor = TimeoutError;
         return isGenerator(constructor.prototype);
     }
 
+    function thunkToPromise(fn) {
+        if (isGeneratorFunction(fn) || isGenerator(fn)) {
+            return co(fn);
+        }
+        var thisArg = (function() { return this; })();
+        var future = new Future();
+        fn.call(thisArg, function(err, res) {
+            if (arguments.length < 2) {
+                if (err instanceof Error) {
+                    return future.reject(err);
+                }
+                return future.resolve(err);
+            }
+            if (err) {
+                return future.reject(err);
+            }
+            if (arguments.length > 2) {
+                res = Array.slice(arguments, 1);
+            }
+            future.resolve(res);
+        });
+        return future;
+    }
+
+    function thunkify(fn) {
+        return function() {
+            var args = Array.slice(arguments, 0);
+            var thisArg = this;
+            var results = new Future();
+            args.push(function() {
+                thisArg = this;
+                results.resolve(arguments);
+            });
+            try {
+                fn.apply(this, args);
+            }
+            catch (err) {
+                results.resolve([err]);
+            }
+            return function(done) {
+                results.then(function(results) {
+                    done.apply(thisArg, results);
+                });
+            };
+        };
+    }
+
     function promisify(fn) {
         return function() {
             var args = Array.slice(arguments, 0);
@@ -829,7 +876,9 @@ TimeoutError.prototype.constructor = TimeoutError;
                 future.resolve(ret.value);
             }
             else {
-                toPromise(ret.value).then(onFulfilled, onRejected);
+                (('function' == typeof ret.value) ?
+                thunkToPromise(ret.value) :
+                toPromise(ret.value)).then(onFulfilled, onRejected);
             }
         }
 
@@ -992,6 +1041,7 @@ TimeoutError.prototype.constructor = TimeoutError;
         settle: { value: settle },
         attempt: { value: attempt },
         run: { value: run },
+        thunkify: { value: thunkify },
         promisify: { value: promisify },
         co: { value: co },
         wrap: { value: wrap },
@@ -1301,6 +1351,7 @@ TimeoutError.prototype.constructor = TimeoutError;
 
     hprose.Future = Future;
 
+    hprose.thunkify = thunkify;
     hprose.promisify = promisify;
     hprose.co = co;
     hprose.co.wrap = hprose.wrap = wrap;
