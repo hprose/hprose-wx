@@ -549,7 +549,7 @@ TimeoutError.prototype.constructor = TimeoutError;
  *                                                        *
  * hprose Future for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 17, 2016                             *
+ * LastModified: Nov 18, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -735,6 +735,9 @@ TimeoutError.prototype.constructor = TimeoutError;
     }
 
     function isGenerator(obj) {
+        if (!obj) {
+            return false;
+        }
         return 'function' == typeof obj.next && 'function' == typeof obj['throw'];
     }
 
@@ -751,50 +754,6 @@ TimeoutError.prototype.constructor = TimeoutError;
             return true;
         }
         return isGenerator(constructor.prototype);
-    }
-
-    function thunkToPromise(fn) {
-        var thisArg = (function() { return this; })();
-        var future = new Future();
-        fn.call(thisArg, function(err, res) {
-            if (arguments.length < 2) {
-                if (err instanceof Error) {
-                    return future.reject(err);
-                }
-                return future.resolve(err);
-            }
-            if (err) {
-                return future.reject(err);
-            }
-            if (arguments.length > 2) {
-                res = Array.slice(arguments, 1);
-            }
-            future.resolve(res);
-        });
-        return future;
-    }
-
-    function thunkify(fn) {
-        return function() {
-            var args = Array.slice(arguments, 0);
-            var thisArg = this;
-            var results = new Future();
-            args.push(function() {
-                thisArg = this;
-                results.resolve(arguments);
-            });
-            try {
-                fn.apply(this, args);
-            }
-            catch (err) {
-                results.resolve([err]);
-            }
-            return function(done) {
-                results.then(function(results) {
-                    done.apply(thisArg, results);
-                });
-            };
-        };
     }
 
     function promisify(fn) {
@@ -835,9 +794,6 @@ TimeoutError.prototype.constructor = TimeoutError;
         }
         if (isGeneratorFunction(obj) || isGenerator(obj)) {
             return co(obj);
-        }
-        if ('function' == typeof obj) {
-            return thunkToPromise(obj);
         }
         return value(obj);
     }
@@ -1036,7 +992,6 @@ TimeoutError.prototype.constructor = TimeoutError;
         settle: { value: settle },
         attempt: { value: attempt },
         run: { value: run },
-        thunkify: { value: thunkify },
         promisify: { value: promisify },
         co: { value: co },
         wrap: { value: wrap },
@@ -1346,7 +1301,6 @@ TimeoutError.prototype.constructor = TimeoutError;
 
     hprose.Future = Future;
 
-    hprose.thunkify = thunkify;
     hprose.promisify = promisify;
     hprose.co = co;
     hprose.co.wrap = hprose.wrap = wrap;
