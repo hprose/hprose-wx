@@ -895,7 +895,7 @@ TimeoutError.prototype.constructor = TimeoutError;
             thisArg = thisArg || this;
             return all(arguments).then(function(args) {
                 var result = handler.apply(thisArg, args);
-                if (isGeneratorFunction(result)) {
+                if (isGeneratorFunction(result) || isGenerator(result)) {
                     return co.call(thisArg, result);
                 }
                 return result;
