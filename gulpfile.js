@@ -28,6 +28,7 @@ gulp.task('concat', ['clear'], function() {
                      'src/HttpClient.js',
                      'src/WebSocketClient.js',
                      'src/JSONRPCClientFilter.js',
+                     'src/wx.js',
                      'src/Loader.js'])
         .pipe(concat('hprose.src.js'))
         .pipe(jshint())
