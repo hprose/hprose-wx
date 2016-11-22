@@ -11,6 +11,7 @@
 !(function(global) {
   "use strict";
 
+  var Promise = global.Promise;
   var hasOwn = Object.prototype.hasOwnProperty;
   var undefined; // More compressible than void 0.
   var $Symbol = typeof Symbol === "function" ? Symbol : {};

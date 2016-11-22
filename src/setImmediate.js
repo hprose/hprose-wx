@@ -13,12 +13,13 @@
  *                                                        *
  * setImmediate for WeChat App.                           *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 22, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
-(function(hprose) {
+/* global global */
+(function(hprose, global) {
     'use strict';
     var nextId = 1;
     var tasks = {};
@@ -59,4 +60,7 @@
         delete tasks[handleId];
     };
 
-})(hprose);
+    global.setImmediate = hprose.setImmediate;
+    global.clearImmediate = hprose.clearImmediate;
+
+})(hprose, global);

@@ -19,7 +19,7 @@
  *                                                        *
  * hprose init for WeChat App.                            *
  *                                                        *
- * LastModified: Nov 10, 2016                             *
+ * LastModified: Nov 22, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -256,12 +256,13 @@ TimeoutError.prototype.constructor = TimeoutError;
  *                                                        *
  * setImmediate for WeChat App.                           *
  *                                                        *
- * LastModified: Nov 16, 2016                             *
+ * LastModified: Nov 22, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
-(function(hprose) {
+/* global global */
+(function(hprose, global) {
     'use strict';
     var nextId = 1;
     var tasks = {};
@@ -302,7 +303,10 @@ TimeoutError.prototype.constructor = TimeoutError;
         delete tasks[handleId];
     };
 
-})(hprose);
+    global.setImmediate = hprose.setImmediate;
+    global.clearImmediate = hprose.clearImmediate;
+
+})(hprose, global);
 
 /**********************************************************\
 |                                                          |
@@ -319,13 +323,13 @@ TimeoutError.prototype.constructor = TimeoutError;
  *                                                        *
  * hprose Map for WeChat App.                             *
  *                                                        *
- * LastModified: Nov 17, 2016                             *
+ * LastModified: Nov 22, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
-/* global Map, WeakMap */
-(function(hprose) {
+/* global global, Map, WeakMap */
+(function(hprose, global) {
     'use strict';
     var namespaces = Object.create(null);
     var count = 0;
@@ -333,6 +337,8 @@ TimeoutError.prototype.constructor = TimeoutError;
     if ((typeof Map === 'function') && (typeof WeakMap === 'function')) {
         hprose.Map = Map;
         hprose.WeakMap = WeakMap;
+        global.Map = Map;
+        global.WeakMap = WeakMap;
         return;
     }
 
@@ -531,8 +537,10 @@ TimeoutError.prototype.constructor = TimeoutError;
 
     hprose.Map = MyMap;
     hprose.WeakMap = MyWeakMap;
+    global.Map = MyMap;
+    global.WeakMap = MyWeakMap;
 
-})(hprose);
+})(hprose, global);
 
 /**********************************************************\
 |                                                          |
@@ -549,13 +557,13 @@ TimeoutError.prototype.constructor = TimeoutError;
  *                                                        *
  * hprose Future for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 18, 2016                             *
+ * LastModified: Nov 22, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
-/* global Promise */
-(function (hprose, undefined) {
+/* global global, Promise */
+(function (hprose, global, undefined) {
     'use strict';
     var PENDING = 0;
     var FULFILLED = 1;
@@ -1381,6 +1389,7 @@ TimeoutError.prototype.constructor = TimeoutError;
 
     if (typeof Promise === 'function') {
         hprose.Promise = Promise;
+        global.Promise = Promise;
         return;
     }
 
@@ -1400,8 +1409,9 @@ TimeoutError.prototype.constructor = TimeoutError;
     });
 
     hprose.Promise = MyPromise;
+    global.Promise = MyPromise;
 
-})(hprose);
+})(hprose, global);
 
 /**********************************************************\
 |                                                          |

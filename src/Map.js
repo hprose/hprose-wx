@@ -13,13 +13,13 @@
  *                                                        *
  * hprose Map for WeChat App.                             *
  *                                                        *
- * LastModified: Nov 17, 2016                             *
+ * LastModified: Nov 22, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
-/* global Map, WeakMap */
-(function(hprose) {
+/* global global, Map, WeakMap */
+(function(hprose, global) {
     'use strict';
     var namespaces = Object.create(null);
     var count = 0;
@@ -27,6 +27,8 @@
     if ((typeof Map === 'function') && (typeof WeakMap === 'function')) {
         hprose.Map = Map;
         hprose.WeakMap = WeakMap;
+        global.Map = Map;
+        global.WeakMap = WeakMap;
         return;
     }
 
@@ -225,5 +227,7 @@
 
     hprose.Map = MyMap;
     hprose.WeakMap = MyWeakMap;
+    global.Map = MyMap;
+    global.WeakMap = MyWeakMap;
 
-})(hprose);
+})(hprose, global);

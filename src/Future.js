@@ -13,13 +13,13 @@
  *                                                        *
  * hprose Future for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 18, 2016                             *
+ * LastModified: Nov 22, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
-/* global Promise */
-(function (hprose, undefined) {
+/* global global, Promise */
+(function (hprose, global, undefined) {
     'use strict';
     var PENDING = 0;
     var FULFILLED = 1;
@@ -845,6 +845,7 @@
 
     if (typeof Promise === 'function') {
         hprose.Promise = Promise;
+        global.Promise = Promise;
         return;
     }
 
@@ -864,5 +865,6 @@
     });
 
     hprose.Promise = MyPromise;
+    global.Promise = MyPromise;
 
-})(hprose);
+})(hprose, global);

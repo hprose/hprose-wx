@@ -13,7 +13,7 @@
  *                                                        *
  * hprose init for WeChat App.                            *
  *                                                        *
- * LastModified: Nov 10, 2016                             *
+ * LastModified: Nov 22, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
