@@ -557,7 +557,7 @@ TimeoutError.prototype.constructor = TimeoutError;
  *                                                        *
  * hprose Future for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 22, 2016                             *
+ * LastModified: Nov 23, 2016                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -854,6 +854,11 @@ TimeoutError.prototype.constructor = TimeoutError;
             var args = Array.slice(arguments, 1);
             gen = gen.apply(thisArg, args);
         }
+
+        if (!gen || typeof gen.next !== 'function') {
+            return toPromise(gen);
+        }
+
         var future = new Future();
 
         function onFulfilled(res) {
@@ -870,7 +875,7 @@ TimeoutError.prototype.constructor = TimeoutError;
                 next(gen['throw'](err));
             }
             catch (e) {
-                return future.reject(e);
+                future.reject(e);
             }
         }
 
@@ -885,9 +890,6 @@ TimeoutError.prototype.constructor = TimeoutError;
             }
         }
 
-        if (!gen || typeof gen.next !== 'function') {
-            return future.resolve(gen);
-        }
         onFulfilled();
 
         return future;
