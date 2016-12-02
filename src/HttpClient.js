@@ -35,7 +35,7 @@
         var self = this;
 
         function getRequestHeader(headers) {
-            var header = Object.create(null);
+            var header = {};
             var name, value;
             for (name in _header) {
                 header[name] = _header[name];
