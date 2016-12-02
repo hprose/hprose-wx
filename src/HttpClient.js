@@ -12,7 +12,7 @@
  *                                                        *
  * hprose http client for WeChat App.                     *
  *                                                        *
- * LastModified: Nov 18, 2016                             *
+ * LastModified: Dec 2, 2016                              *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -34,19 +34,36 @@
 
         var self = this;
 
-        function wxPost(request, env) {
-            var future = new Future();
-            var header = {};
-            for (var k in _header) {
-                header[k] = _header[k];
+        function getRequestHeader(headers) {
+            var header = Object.create(null);
+            var name, value;
+            for (name in _header) {
+                header[name] = _header[name];
             }
+            if (headers) {
+                for (name in headers) {
+                    value = headers[name];
+                    if (Array.isArray(value)) {
+                        header[name] = value.join(', ');
+                    }
+                    else {
+                        header[name] = value;
+                    }
+                }
+            }
+            return header;
+        }
+
+        function wxPost(request, context) {
+            var future = new Future();
+            var header = getRequestHeader(context.httpHeader);
             header['Content-Type'] = 'text/plain; charset=UTF-8';
             wx.request({
                 url: self.uri,
                 method: 'POST',
                 data: BytesIO.toString(request),
                 header: header,
-                timeout: env.timeout,
+                timeout: context.timeout,
                 complete: function(ret) {
                     if (typeof ret.statusCode === "undefined") {
                         future.reject(new Error(ret.errMsg));
@@ -62,9 +79,9 @@
             return future; 
         }
 
-        function sendAndReceive(request, env) {
-            var future = wxPost(request, env);
-            if (env.oneway) { future.resolve(); }
+        function sendAndReceive(request, context) {
+            var future = wxPost(request, context);
+            if (context.oneway) { future.resolve(); }
             return future;
         }
 

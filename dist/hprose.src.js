@@ -4650,7 +4650,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
  *                                                        *
  * hprose http client for WeChat App.                     *
  *                                                        *
- * LastModified: Nov 18, 2016                             *
+ * LastModified: Dec 2, 2016                              *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -4672,19 +4672,36 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
 
         var self = this;
 
-        function wxPost(request, env) {
-            var future = new Future();
-            var header = {};
-            for (var k in _header) {
-                header[k] = _header[k];
+        function getRequestHeader(headers) {
+            var header = Object.create(null);
+            var name, value;
+            for (name in _header) {
+                header[name] = _header[name];
             }
+            if (headers) {
+                for (name in headers) {
+                    value = headers[name];
+                    if (Array.isArray(value)) {
+                        header[name] = value.join(', ');
+                    }
+                    else {
+                        header[name] = value;
+                    }
+                }
+            }
+            return header;
+        }
+
+        function wxPost(request, context) {
+            var future = new Future();
+            var header = getRequestHeader(context.httpHeader);
             header['Content-Type'] = 'text/plain; charset=UTF-8';
             wx.request({
                 url: self.uri,
                 method: 'POST',
                 data: BytesIO.toString(request),
                 header: header,
-                timeout: env.timeout,
+                timeout: context.timeout,
                 complete: function(ret) {
                     if (typeof ret.statusCode === "undefined") {
                         future.reject(new Error(ret.errMsg));
@@ -4700,9 +4717,9 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
             return future; 
         }
 
-        function sendAndReceive(request, env) {
-            var future = wxPost(request, env);
-            if (env.oneway) { future.resolve(); }
+        function sendAndReceive(request, context) {
+            var future = wxPost(request, context);
+            if (context.oneway) { future.resolve(); }
             return future;
         }
 
@@ -4765,7 +4782,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
  *                                                        *
  * hprose websocket client for WeChat App.                *
  *                                                        *
- * LastModified: Nov 17, 2016                             *
+ * LastModified: Dec 2, 2016                              *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -4870,12 +4887,12 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
             wx.onSocketError(onerror);
             wx.onSocketClose(onclose);
         }
-        function sendAndReceive(request, env) {
+        function sendAndReceive(request, context) {
             var id = getNextId();
             var future = new Future();
             _futures[id] = future;
-            if (env.timeout > 0) {
-                future = future.timeout(env.timeout).catchError(function(e) {
+            if (context.timeout > 0) {
+                future = future.timeout(context.timeout).catchError(function(e) {
                     delete _futures[id];
                     --_count;
                     throw e;
@@ -4894,7 +4911,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
             else {
                 _requests.push([id, request]);
             }
-            if (env.oneway) { future.resolve(); }
+            if (context.oneway) { future.resolve(); }
             return future;
         }
         function close() {
