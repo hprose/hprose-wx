@@ -557,7 +557,7 @@ TimeoutError.prototype.constructor = TimeoutError;
  *                                                        *
  * hprose Future for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 24, 2016                             *
+ * LastModified: Dec 5, 2016                              *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -853,7 +853,7 @@ TimeoutError.prototype.constructor = TimeoutError;
         }
 
         if (!gen || typeof gen.next !== 'function') {
-            return toPromise(gen);
+            return toFuture(gen);
         }
 
         var future = new Future();
@@ -3450,7 +3450,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
  *                                                        *
  * hprose client for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 17, 2016                             *
+ * LastModified: Dec 5, 2016                              *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -4487,9 +4487,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
             _invokeHandler = _invokeHandlers.reduceRight(
             function(next, handler) {
                 return function(name, args, context) {
-                    return Future.sync(function() {
-                        return handler(name, args, context, next);
-                    });
+                    return Future.toPromise(handler(name, args, context, next));
                 };
             }, invokeHandler);
         }
@@ -4498,9 +4496,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
             _batchInvokeHandler = _batchInvokeHandlers.reduceRight(
             function(next, handler) {
                 return function(batches, context) {
-                    return Future.sync(function() {
-                        return handler(batches, context, next);
-                    });
+                    return Future.toPromise(handler(batches, context, next));
                 };
             }, batchInvokeHandler);
         }
@@ -4509,9 +4505,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
             _beforeFilterHandler = _beforeFilterHandlers.reduceRight(
             function(next, handler) {
                 return function(request, context) {
-                    return Future.sync(function() {
-                        return handler(request, context, next);
-                    });
+                    return Future.toPromise(handler(request, context, next));
                 };
             }, beforeFilterHandler);
         }
@@ -4520,9 +4514,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
             _afterFilterHandler = _afterFilterHandlers.reduceRight(
             function(next, handler) {
                 return function(request, context) {
-                    return Future.sync(function() {
-                        return handler(request, context, next);
-                    });
+                    return Future.toPromise(handler(request, context, next));
                 };
             }, afterFilterHandler);
         }
