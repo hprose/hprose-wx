@@ -13,7 +13,7 @@
  *                                                        *
  * hprose Future for WeChat App.                          *
  *                                                        *
- * LastModified: Nov 24, 2016                             *
+ * LastModified: Dec 5, 2016                              *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -309,7 +309,7 @@
         }
 
         if (!gen || typeof gen.next !== 'function') {
-            return toPromise(gen);
+            return toFuture(gen);
         }
 
         var future = new Future();
