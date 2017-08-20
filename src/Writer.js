@@ -27,6 +27,9 @@
 
     function getClassName(obj) {
         var cls = obj.constructor;
+        if (!cls) {
+            return 'Object';
+        }
         var classname = ClassManager.getClassAlias(cls);
         if (classname) { return classname; }
         if (cls.name) {
