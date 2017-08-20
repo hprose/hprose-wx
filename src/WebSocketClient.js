@@ -12,7 +12,7 @@
  *                                                        *
  * hprose websocket client for WeChat App.                *
  *                                                        *
- * LastModified: Dec 2, 2016                              *
+ * LastModified: Aug 20, 2017                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -125,6 +125,7 @@
                 future = future.timeout(context.timeout).catchError(function(e) {
                     delete _futures[id];
                     --_count;
+                    close();
                     throw e;
                 },
                 function(e) {
