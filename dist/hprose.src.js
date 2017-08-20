@@ -1,4 +1,4 @@
-// Hprose for WeChat App v2.0.0
+// Hprose for WeChat App v2.0.1
 // Copyright (c) 2008-2016 http://hprose.com
 // Hprose is freely distributable under the MIT license.
 // For all details and documentation:
@@ -2139,6 +2139,9 @@ hprose.Tags = {
 
     function getClassName(obj) {
         var cls = obj.constructor;
+        if (!cls) {
+            return 'Object';
+        }
         var classname = ClassManager.getClassAlias(cls);
         if (classname) { return classname; }
         if (cls.name) {
@@ -3450,7 +3453,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
  *                                                        *
  * hprose client for WeChat App.                          *
  *                                                        *
- * LastModified: Dec 5, 2016                              *
+ * LastModified: Aug 20, 2017                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -3662,7 +3665,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
                     }
                     else {
                         for (var n in m) {
-                            setMethods(stub, obj[name], name + '_', n, m[n]);
+                            setMethods(stub, obj[name], namespace + name + '_', n, m[n]);
                         }
                     }
                 }
@@ -4356,7 +4359,8 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
                 });
                 return;
             }
-            if (timeout === undefined) { timeout = _timeout; }
+            // Default subscribe timeout is 5 minutes.
+            if (timeout === undefined) { timeout = 300000; }
             var topic = getTopic(name, id);
             if (topic === null) {
                 var cb = function() {
@@ -4774,7 +4778,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
  *                                                        *
  * hprose websocket client for WeChat App.                *
  *                                                        *
- * LastModified: Dec 2, 2016                              *
+ * LastModified: Aug 20, 2017                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -4887,6 +4891,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
                 future = future.timeout(context.timeout).catchError(function(e) {
                     delete _futures[id];
                     --_count;
+                    close();
                     throw e;
                 },
                 function(e) {
