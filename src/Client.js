@@ -12,7 +12,7 @@
  *                                                        *
  * hprose client for WeChat App.                          *
  *                                                        *
- * LastModified: Dec 5, 2016                              *
+ * LastModified: Aug 20, 2017                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -224,7 +224,7 @@
                     }
                     else {
                         for (var n in m) {
-                            setMethods(stub, obj[name], name + '_', n, m[n]);
+                            setMethods(stub, obj[name], namespace + name + '_', n, m[n]);
                         }
                     }
                 }
@@ -918,7 +918,8 @@
                 });
                 return;
             }
-            if (timeout === undefined) { timeout = _timeout; }
+            // Default subscribe timeout is 5 minutes.
+            if (timeout === undefined) { timeout = 300000; }
             var topic = getTopic(name, id);
             if (topic === null) {
                 var cb = function() {
