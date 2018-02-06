@@ -1,4 +1,4 @@
-// Hprose for WeChat App v2.0.1
+// Hprose for WeChat App v2.0.2
 // Copyright (c) 2008-2016 http://hprose.com
 // Hprose is freely distributable under the MIT license.
 // For all details and documentation:
@@ -3453,7 +3453,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
  *                                                        *
  * hprose client for WeChat App.                          *
  *                                                        *
- * LastModified: Aug 20, 2017                             *
+ * LastModified: Feb 6, 2018                              *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
@@ -3595,6 +3595,27 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
             return null;
         }
 
+        function normalizeFunctions(functions) {
+            var root = [Object.create(null)];
+            for (var i in functions) {
+                var func = functions[i].split('_');
+                var n = func.length - 1;
+                if (n > 0) {
+                    var node = root;
+                    for (var j = 0; j < n; j++) {
+                        var f = func[j];
+                        if (node[0][f] === undefined) {
+                            node[0][f] = [Object.create(null)];
+                        }
+                        node = node[0][f];
+                    }
+                    node.push(func[n]);
+                }
+                root.push(functions[i]);
+            }
+            return root;
+        }
+
         function initService(stub) {
             var context = {
                 retry: _retry,
@@ -3616,7 +3637,7 @@ hprose.RawWithEndTag = hprose.ResultMode.RawWithEndTag;
                             error = new Error(reader.readString());
                             break;
                         case Tags.TagFunctions:
-                            var functions = reader.readList();
+                            var functions = normalizeFunctions(reader.readList());
                             reader.checkTag(Tags.TagEnd);
                             setFunctions(stub, functions);
                             break;
