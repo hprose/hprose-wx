@@ -12,11 +12,12 @@
  *                                                        *
  * hprose client for WeChat App.                          *
  *                                                        *
- * LastModified: Feb 6, 2018                              *
+ * LastModified: Apr 24, 2018                             *
  * Author: Ma Bingyao <andot@hprose.com>                  *
  *                                                        *
 \**********************************************************/
 
+/* global Proxy */
 (function (hprose, undefined) {
     'use strict';
     var setImmediate = hprose.setImmediate;
@@ -39,6 +40,29 @@
     var s_number = 'number';
     var s_function = 'function';
     var s_object = 'object';
+
+    function HproseProxy(setFunction, ns) {
+        var settings = {};
+        this.get = function(target, prop/*, receiver*/) {
+            var name = prop.toString();
+            if (ns) { name = ns + '_' + name; }
+            if (name === 'then') { return undefined; }
+            if (!target.hasOwnProperty(name)) {
+                settings[name] = {};
+                var handler = new HproseProxy(setFunction, name);
+                var func = setFunction(settings, name);
+                handler.apply = function(target, thisArg, argumentsList) {
+                    return func.apply(null, argumentsList);
+                }
+                handler.set = function(target, prop, value/*, receiver*/) {
+                    settings[name][prop] = value;
+                    return true;
+                };
+                target[name] = new Proxy(function() {}, handler);
+            }
+            return target[name];
+        };
+    }
 
     function Client(uri, functions, settings) {
 
@@ -863,7 +887,12 @@
                 setImmediate(initService, stub);
                 return _ready;
             }
-            setFunctions(stub, functions);
+            else if (typeof(Proxy) === 'undefined') {
+                setFunctions(stub, functions);
+            }
+            else {
+                stub = new Proxy({}, new HproseProxy(setFunction));
+            }
             _ready.resolve(stub);
             return stub;
         }
