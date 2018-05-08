@@ -18,8 +18,7 @@
  *                                                        *
 \**********************************************************/
 
-/* global global */
-(function(hprose, global) {
+(function(hprose) {
     'use strict';
     var nextId = 1;
     var tasks = {};
@@ -60,7 +59,4 @@
         delete tasks[handleId];
     };
 
-    global.setImmediate = hprose.setImmediate;
-    global.clearImmediate = hprose.clearImmediate;
-
-})(hprose, global);
+})(hprose);

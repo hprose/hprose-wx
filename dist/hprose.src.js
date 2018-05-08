@@ -1,4 +1,4 @@
-// Hprose for WeChat App v2.0.3
+// Hprose for WeChat App v2.0.4
 // Copyright (c) 2008-2016 http://hprose.com
 // Hprose is freely distributable under the MIT license.
 // For all details and documentation:
@@ -261,8 +261,7 @@ TimeoutError.prototype.constructor = TimeoutError;
  *                                                        *
 \**********************************************************/
 
-/* global global */
-(function(hprose, global) {
+(function(hprose) {
     'use strict';
     var nextId = 1;
     var tasks = {};
@@ -303,10 +302,7 @@ TimeoutError.prototype.constructor = TimeoutError;
         delete tasks[handleId];
     };
 
-    global.setImmediate = hprose.setImmediate;
-    global.clearImmediate = hprose.clearImmediate;
-
-})(hprose, global);
+})(hprose);
 
 /**********************************************************\
 |                                                          |
@@ -328,8 +324,8 @@ TimeoutError.prototype.constructor = TimeoutError;
  *                                                        *
 \**********************************************************/
 
-/* global global, Map, WeakMap */
-(function(hprose, global) {
+/* global Map, WeakMap */
+(function(hprose) {
     'use strict';
     var namespaces = Object.create(null);
     var count = 0;
@@ -337,8 +333,6 @@ TimeoutError.prototype.constructor = TimeoutError;
     if ((typeof Map === 'function') && (typeof WeakMap === 'function')) {
         hprose.Map = Map;
         hprose.WeakMap = WeakMap;
-        global.Map = Map;
-        global.WeakMap = WeakMap;
         return;
     }
 
@@ -537,10 +531,7 @@ TimeoutError.prototype.constructor = TimeoutError;
 
     hprose.Map = MyMap;
     hprose.WeakMap = MyWeakMap;
-    global.Map = MyMap;
-    global.WeakMap = MyWeakMap;
-
-})(hprose, global);
+})(hprose);
 
 /**********************************************************\
 |                                                          |
@@ -562,8 +553,8 @@ TimeoutError.prototype.constructor = TimeoutError;
  *                                                        *
 \**********************************************************/
 
-/* global global, Promise */
-(function (hprose, global, undefined) {
+/* global Promise */
+(function (hprose, undefined) {
     'use strict';
     var PENDING = 0;
     var FULFILLED = 1;
@@ -1376,7 +1367,6 @@ TimeoutError.prototype.constructor = TimeoutError;
 
     if (typeof Promise === 'function') {
         hprose.Promise = Promise;
-        global.Promise = Promise;
         return;
     }
 
@@ -1396,9 +1386,8 @@ TimeoutError.prototype.constructor = TimeoutError;
     });
 
     hprose.Promise = MyPromise;
-    global.Promise = MyPromise;
 
-})(hprose, global);
+})(hprose);
 
 /**********************************************************\
 |                                                          |

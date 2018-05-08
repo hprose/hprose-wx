@@ -18,8 +18,8 @@
  *                                                        *
 \**********************************************************/
 
-/* global global, Promise */
-(function (hprose, global, undefined) {
+/* global Promise */
+(function (hprose, undefined) {
     'use strict';
     var PENDING = 0;
     var FULFILLED = 1;
@@ -832,7 +832,6 @@
 
     if (typeof Promise === 'function') {
         hprose.Promise = Promise;
-        global.Promise = Promise;
         return;
     }
 
@@ -852,6 +851,5 @@
     });
 
     hprose.Promise = MyPromise;
-    global.Promise = MyPromise;
 
-})(hprose, global);
+})(hprose);
